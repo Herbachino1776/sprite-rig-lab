@@ -10,7 +10,9 @@ type Point = { x: number; y: number };
 type OverlayCache = { canvas: HTMLCanvasElement | null; dirty: boolean; lastColor: string; lastOpacity: number };
 type AnimationMode = 'whole-sprite-idle' | 'part-based-idle';
 type IdleSettings = { breathingAmount: number; headSway: number; armDrift: number; overallIntensity: number };
-type ExportMeta = { animationMode: AnimationMode; partBasedIdle: boolean; idleSettings: IdleSettings; frameCount: number; cellWidth: number; cellHeight: number; stripWidth: number; stripHeight: number; floorY: number; renderScale: number; selectedPresetLabel: string; warnings: string[]; bleedRisk: boolean };
+type AlphaBounds = { minX: number; minY: number; maxX: number; maxY: number; width: number; height: number };
+type FrameBoundsReport = { frameIndex: number; alphaBounds: AlphaBounds | null; centerOffsetXBeforeCorrection: number; finalLeftMargin: number; finalRightMargin: number };
+type ExportMeta = { animationMode: AnimationMode; partBasedIdle: boolean; idleSettings: IdleSettings; frameCount: number; cellWidth: number; cellHeight: number; stripWidth: number; stripHeight: number; floorY: number; renderScale: number; selectedPresetLabel: string; warnings: string[]; bleedRisk: boolean; frameBounds: FrameBoundsReport[] };
 type PreviewMode = 'idle-strip' | 'part-layer' | 'composite-parts';
 type MaskStats = { bounds: { minX: number; maxX: number; minY: number; maxY: number; width: number; height: number }; area: number; centroid: Point; bottomCenter: Point; touchesFloor: boolean; warnings: string[] };
 
@@ -28,6 +30,26 @@ const findPresetLabel = (width: number, height: number): string => exportSizePre
 const getCanvasPointFromPointerEvent = (evt: PointerEvent, canvas: HTMLCanvasElement): Point => {
   const rect = canvas.getBoundingClientRect();
   return { x: (evt.clientX - rect.left) * (canvas.width / rect.width), y: (evt.clientY - rect.top) * (canvas.height / rect.height) };
+};
+const findAlphaBounds = (canvas: HTMLCanvasElement): AlphaBounds | null => {
+  const { width, height } = canvas;
+  const data = canvas.getContext('2d')!.getImageData(0, 0, width, height).data;
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const alpha = data[(y * width + x) * 4 + 3];
+      if (alpha === 0) continue;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+  }
+  if (maxX < minX || maxY < minY) return null;
+  return { minX, minY, maxX, maxY, width: maxX - minX + 1, height: maxY - minY + 1 };
 };
 
 function createRenderPlan(analysis: SpriteAnalysis, cellWidth: number, cellHeight: number, frameCount: number): RenderPlan {
@@ -315,11 +337,17 @@ export function initApp(root: HTMLDivElement) {
     const plan = createRenderPlan(state.analysis, state.cellWidth, state.cellHeight, state.frameCount);
     const canvas = document.createElement('canvas'); canvas.width = state.cellWidth * state.frameCount; canvas.height = state.cellHeight;
     const ctx = canvas.getContext('2d')!;
+    const frameCanvas = document.createElement('canvas'); frameCanvas.width = state.cellWidth; frameCanvas.height = state.cellHeight;
+    const frameCtx = frameCanvas.getContext('2d')!;
+    const frameBounds: FrameBoundsReport[] = [];
+    const marginWarnThreshold = state.cellWidth * 0.05;
+    const compileWarnings = [...plan.warnings];
     for (let i = 0; i < state.frameCount; i++) {
+      frameCtx.clearRect(0, 0, state.cellWidth, state.cellHeight);
       const t = idleTransform(i, state.frameCount);
       if (animationMode === 'whole-sprite-idle') {
         const pivotX = state.analysis.sourceBounds.x + state.analysis.sourceBounds.width / 2;
-        ctx.save(); ctx.translate(i * state.cellWidth + state.cellWidth / 2  , plan.baseFloor + t.bobY * plan.renderScale); ctx.scale(plan.renderScale * t.scale, plan.renderScale * t.scale); ctx.drawImage(image, -pivotX, -state.analysis.floorY); ctx.restore();
+        frameCtx.save(); frameCtx.translate(state.cellWidth / 2, plan.baseFloor + t.bobY * plan.renderScale); frameCtx.scale(plan.renderScale * t.scale, plan.renderScale * t.scale); frameCtx.drawImage(image, -pivotX, -state.analysis.floorY); frameCtx.restore();
       } else {
         const intensity = idleSettings.overallIntensity;
         const phase = (i / state.frameCount) * Math.PI * 2;
@@ -335,19 +363,39 @@ export function initApp(root: HTMLDivElement) {
           else if (role === 'head' || role === 'horns') { bobY = Math.sin(phase + 0.5) * 2.5 * idleSettings.headSway * intensity; driftX = Math.sin(phase) * 1.6 * idleSettings.headSway * intensity; rot = Math.sin(phase + 1) * 1.5 * idleSettings.headSway * intensity; }
           else if (role === 'front_arm' || role === 'rear_arm' || role === 'tail' || role === 'extra_01') { bobY = Math.sin(phase + 0.8) * 1.6 * idleSettings.armDrift * intensity; driftX = Math.sin(phase + 0.4) * 1.2 * idleSettings.armDrift * intensity; rot = Math.sin(phase + 0.2) * 1.8 * idleSettings.armDrift * intensity; }
           else if (role === 'front_leg' || role === 'rear_leg') { bobY = Math.sin(phase) * 0.35 * intensity; rot = Math.sin(phase + 0.4) * 0.4 * intensity; }
-          ctx.save();
-          ctx.translate(i * state.cellWidth + state.cellWidth / 2, plan.baseFloor);
-          ctx.scale(plan.renderScale, plan.renderScale);
-          ctx.translate(partPivot.x + driftX, partPivot.y + bobY - state.analysis.floorY);
-          ctx.rotate((rot * Math.PI) / 180);
-          ctx.scale(sx, sy);
-          ctx.drawImage(layer, -partPivot.x, -partPivot.y);
-          ctx.restore();
+          frameCtx.save();
+          frameCtx.translate(state.cellWidth / 2, plan.baseFloor);
+          frameCtx.scale(plan.renderScale, plan.renderScale);
+          frameCtx.translate(partPivot.x + driftX, partPivot.y + bobY - state.analysis.floorY);
+          frameCtx.rotate((rot * Math.PI) / 180);
+          frameCtx.scale(sx, sy);
+          frameCtx.drawImage(layer, -partPivot.x, -partPivot.y);
+          frameCtx.restore();
         }
       }
+      const bounds = findAlphaBounds(frameCanvas);
+      let shiftX = 0;
+      let shiftY = 0;
+      let centerOffsetXBeforeCorrection = 0;
+      let finalLeftMargin = 0;
+      let finalRightMargin = 0;
+      if (bounds) {
+        const boundsCenterX = (bounds.minX + bounds.maxX) / 2;
+        const cellCenterX = state.cellWidth / 2;
+        centerOffsetXBeforeCorrection = boundsCenterX - cellCenterX;
+        shiftX = Math.round(cellCenterX - boundsCenterX);
+        shiftY = Math.round(plan.baseFloor - bounds.maxY);
+        finalLeftMargin = bounds.minX + shiftX;
+        finalRightMargin = state.cellWidth - 1 - (bounds.maxX + shiftX);
+        if (Math.abs(finalLeftMargin - finalRightMargin) > marginWarnThreshold) {
+          compileWarnings.push(`Frame ${i}: left/right margins differ by more than 5% of cell width.`);
+        }
+      }
+      ctx.drawImage(frameCanvas, i * state.cellWidth + shiftX, shiftY);
+      frameBounds.push({ frameIndex: i, alphaBounds: bounds, centerOffsetXBeforeCorrection: Number(centerOffsetXBeforeCorrection.toFixed(3)), finalLeftMargin: Number(finalLeftMargin.toFixed(3)), finalRightMargin: Number(finalRightMargin.toFixed(3)) });
     }
     stripCanvas = canvas; lastRenderPlan = plan; stalePreview = false;
-    exportMeta = { animationMode, partBasedIdle: animationMode === 'part-based-idle', idleSettings: { ...idleSettings }, frameCount: state.frameCount, cellWidth: state.cellWidth, cellHeight: state.cellHeight, stripWidth: canvas.width, stripHeight: canvas.height, floorY: plan.baseFloor, renderScale: Number(plan.renderScale.toFixed(4)), selectedPresetLabel, warnings: plan.warnings, bleedRisk: plan.bleedRisk };
+    exportMeta = { animationMode, partBasedIdle: animationMode === 'part-based-idle', idleSettings: { ...idleSettings }, frameCount: state.frameCount, cellWidth: state.cellWidth, cellHeight: state.cellHeight, stripWidth: canvas.width, stripHeight: canvas.height, floorY: plan.baseFloor, renderScale: Number(plan.renderScale.toFixed(4)), selectedPresetLabel, warnings: compileWarnings, bleedRisk: plan.bleedRisk, frameBounds };
     renderReport.textContent = JSON.stringify(exportMeta, null, 2);
     setStatus(`Generated strip ${canvas.width}x${canvas.height}`);
   };
