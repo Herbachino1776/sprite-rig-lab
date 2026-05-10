@@ -1,37 +1,41 @@
-:root { font-family: Inter, system-ui, sans-serif; color: #e8ecf2; background:#10131a; }
+:root { font-family: Inter, system-ui, sans-serif; color: #e6ecff; background: radial-gradient(circle at 20% -20%, #2a1352, #0b0f18 45%); }
 * { box-sizing: border-box; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
-html, body { margin:0; overscroll-behavior: contain; }
-#app { max-width: 1200px; margin: 0 auto; padding: 10px; }
-.shell { display:flex; flex-direction:column; gap:10px; }
-.panel { background:#181d26; border:1px solid #2a3342; border-radius:12px; padding:10px; }
-.topBar { display:flex; flex-direction:column; gap:10px; }
-.projectButtons { display:grid; grid-template-columns:1fr; gap:8px; }
-h1 { margin:0 0 4px; font-size:20px; }
-.status { margin:0; color:#9fd7ff; font-size:13px; }
-.status.error { color:#ff8f8f; }
-.workspaceArea { padding:8px; touch-action:none; }
-canvas { width:100%; background: repeating-conic-gradient(#1f2632 0% 25%, #171d28 0% 50%) 50% / 20px 20px; border:1px solid #2a3342; border-radius:12px; }
-.modeTabs { display:flex; gap:8px; overflow-x:auto; }
-.modeControls { background:#141a24; display:flex; flex-direction:column; gap:8px; }
-.partChips { display:flex; gap:8px; overflow-x:auto; padding-bottom:2px; }
-.partChip { min-height:44px; min-width:152px; width:auto; display:flex; gap:8px; align-items:center; justify-content:space-between; }
-.partChip.active { outline:2px solid #9fd7ff; }
-.segmented { display:flex; gap:8px; overflow-x:auto; }
-.segmented button, .modeTabs button { white-space:nowrap; min-width:120px; }
-.partInfo { font-size:12px; color:#b8d3ea; background:#111722; border:1px solid #2a3342; border-radius:8px; padding:8px; min-height:44px; display:flex; align-items:center; }
-.transformPanel, .autoRigPanel { border:1px solid #2a3342; border-radius:10px; background:#111722; padding:8px; display:flex; flex-direction:column; gap:8px; }
-.inlineToggle { display:flex; align-items:center; gap:8px; font-size:12px; }
-.row { display:flex; gap:8px; flex-wrap:wrap; }
-button, input, select, .fileLabel { min-height:44px; border-radius:10px; border:1px solid #2a3342; background:#0f131b; color:#e8ecf2; padding:10px; }
-button { cursor:pointer; }
-button.active, button.primary { background:#28435a; border-color:#9fd7ff; }
-label { font-size:13px; display:flex; flex-direction:column; gap:4px; flex:1; }
-.compactSlider label { flex-direction:row; justify-content:space-between; align-items:center; }
-pre { white-space:pre-wrap; font-size:12px; background:#111722; padding:8px; border-radius:8px; border:1px solid #2a3342; }
-.presetRow { display:flex; flex-wrap:wrap; gap:8px; margin:8px 0; }
-.fileLabel input { display:none; }
-.shellError { margin-top:8px; padding:8px; border:1px solid #ff6b6b; background:#4c1f1f; color:#ffdada; border-radius:8px; }
+html, body { margin: 0; overscroll-behavior: contain; background: #090d16; }
+#app { max-width: 1280px; margin: 0 auto; padding: 10px; }
+.shell { display: flex; flex-direction: column; gap: 10px; }
+.panel { background: linear-gradient(170deg, #121927, #0f1522); border: 1px solid #2a3350; border-radius: 14px; padding: 10px; box-shadow: 0 0 0 1px #121a2a inset; }
+.topBar { display: flex; flex-direction: column; gap: 10px; }
+.brandBlock h1 { margin: 0; font-size: 20px; letter-spacing: .08em; color: #9be9ff; }
+.status { margin: 4px 0 0; color: #94a9c9; font-size: 13px; }
+.status.error { color: #ff8383; }
+.projectButtons { display: grid; grid-template-columns: repeat(3, minmax(120px,1fr)); gap: 8px; }
+.statusRow { display: flex; gap: 10px; flex-wrap: wrap; font-size: 12px; color: #a8bfdc; }
+.savedBadge { margin-left: auto; color: #b9ffe3; border: 1px solid #355b52; border-radius: 999px; padding: 2px 10px; }
+.workspaceArea { padding: 8px; touch-action: none; }
+canvas { width: 100%; background: repeating-conic-gradient(#222c3f 0% 25%, #181f31 0% 50%) 50% / 22px 22px; border: 1px solid #354162; border-radius: 12px; }
+.modeTabs { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 8px; }
+.modeControls { display: flex; flex-direction: column; gap: 10px; }
+.partChips { display: flex; gap: 8px; overflow-x: auto; }
+.partChip { min-height: 44px; min-width: 156px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.partChip.active { border-color: #62d9ff; box-shadow: 0 0 0 1px #62d9ff inset; }
+.swatch { width: 12px; height: 12px; border-radius: 999px; }
+.segmented { display: flex; gap: 8px; overflow-x: auto; }
+.partInfo, .transformPanel, .autoRigPanel, pre, .previewPanel { font-size: 12px; color: #c0d1ea; background: #0d1320; border: 1px solid #2b3552; border-radius: 10px; padding: 8px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; }
+button, input, select, .fileLabel { min-height: 44px; border-radius: 10px; border: 1px solid #2f3b58; background: #111a2b; color: #e7eeff; padding: 10px; }
+button.active, button.primary { background: linear-gradient(135deg, #1f6f99, #4c2f9f); border-color: #7be6ff; }
+label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; flex: 1; }
+.compactSlider label { flex-direction: row; justify-content: space-between; }
+.fileLabel input { display: none; }
+.shellError { border: 1px solid #ff4a67; background: #4d1420; color: #ffcad4; border-radius: 8px; padding: 8px; }
+
+@media (max-width: 767px) {
+  #app { padding: 8px; }
+  .projectButtons { grid-template-columns: 1fr 1fr; }
+  .projectButtons > *:last-child { grid-column: 1 / -1; }
+  .modeTabs { grid-template-columns: repeat(2, minmax(0,1fr)); }
+}
+
 @media (min-width: 960px) {
-  .topBar { flex-direction:row; justify-content:space-between; align-items:flex-start; }
-  .projectButtons { grid-template-columns: repeat(3, minmax(150px, 1fr)); }
+  .topBar { flex-direction: row; justify-content: space-between; align-items: center; }
 }
