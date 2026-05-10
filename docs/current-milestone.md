@@ -42,3 +42,8 @@ Manual Mask Editor v1 added:
 - Paint/erase brush workflows over workspace sprite with adjustable brush size and overlay opacity.
 - Per-part masks are stored at source-image resolution and serialized in Save/Load Project JSON.
 - Save Project JSON now captures source dimensions, sourceBounds, floorY, parts, layer order, visibility, serialized masks, and export settings.
+
+- Mobile stabilization pass: mask painting must disable text selection/callouts, support pointer capture/cancel flows, and keep touch drawing accurate on iPhone-class browsers.
+- Workspace pointer coordinates must be converted from CSS pixels to backing canvas pixels before workspaceTransform mapping.
+- Mask editor UI must expose touch-friendly part chips (>=44px controls) with color/name/visibility and mobile-first layout above workspace on narrow screens.
+- Overlay redraws must use cached tinted mask canvases with dirty-flag invalidation and requestAnimationFrame-throttled workspace rendering.

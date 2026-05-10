@@ -14,3 +14,7 @@
 
 - Manual mask data must be stored per part at source-image resolution and must survive Save/Load Project JSON round-trips.
 - Manual mask editor must expose deterministic default parts, visibility toggles, layer reorder, paint/erase brush modes, brush size, and overlay opacity without changing export floor-lock behavior.
+
+- Manual mask editor pointer mapping invariant: map pointer client coordinates -> canvas backing coordinates -> source-image coordinates with transform-aware clamping.
+- Manual mask editor mobile invariant: workspace drawing must prevent default touch/callout behavior and must handle pointercapture + pointercancel without stuck paint state.
+- Manual mask editor performance invariant: tinted mask overlays are cacheable per part and may only rebuild when mask/color/opacity changes.
