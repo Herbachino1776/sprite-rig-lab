@@ -18,3 +18,7 @@
 - Manual mask editor pointer mapping invariant: map pointer client coordinates -> canvas backing coordinates -> source-image coordinates with transform-aware clamping.
 - Manual mask editor mobile invariant: workspace drawing must prevent default touch/callout behavior and must handle pointercapture + pointercancel without stuck paint state.
 - Manual mask editor performance invariant: tinted mask overlays are cacheable per part and may only rebuild when mask/color/opacity changes.
+
+- Required runtime shell check validates presence of generate/png/json controls, workspace, preview, and part chips; missing nodes must surface visible red error + console.error.
+- Deterministic export and animated preview are protected invariants and cannot be removed by mask/lasso refactors.
+- Mobile-first tool layout must retain touch-friendly (>=44px) controls and a prominent workspace.

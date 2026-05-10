@@ -47,3 +47,7 @@ Manual Mask Editor v1 added:
 - Workspace pointer coordinates must be converted from CSS pixels to backing canvas pixels before workspaceTransform mapping.
 - Mask editor UI must expose touch-friendly part chips (>=44px controls) with color/name/visibility and mobile-first layout above workspace on narrow screens.
 - Overlay redraws must use cached tinted mask canvases with dirty-flag invalidation and requestAnimationFrame-throttled workspace rendering.
+
+- App shell invariant: Generate Strip, Export PNG Strip, Export Metadata JSON, workspace canvas, preview canvas, and part chips must always remain mounted in DOM.
+- Mask/editor changes must not remove or disable deterministic strip export pipeline or preview loop.
+- Mobile UI invariant: primary touch controls are 44px+ (target 48px) and workspace remains visually prioritized near top on narrow screens.
