@@ -23,6 +23,8 @@ export type ProjectSaveData = {
   sourceBounds: SpriteAnalysis['sourceBounds'];
   floorY: number;
   parts: Array<{ name: string; visible: boolean; color: string; maskDataUrl: string | null }>;
+  pivots: Record<string, { x: number; y: number } | undefined>;
+  floorContacts: Record<string, { x: number; y: number } | undefined>;
   layerOrder: string[];
   exportSettings: {
     frameCount: 5 | 6;

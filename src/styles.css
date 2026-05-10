@@ -14,7 +14,9 @@ canvas { width:100%; background: repeating-conic-gradient(#1f2632 0% 25%, #171d2
 .partChips { display:flex; gap:8px; overflow-x:auto; padding-bottom:2px; }
 .partChip { min-height:48px; min-width:160px; width:auto; display:flex; gap:8px; align-items:center; justify-content:space-between; }
 .partChip.active { outline:2px solid #9fd7ff; }
-.segmented { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.segmented { display:flex; gap:8px; overflow-x:auto; padding-bottom:2px; }
+.segmented button { white-space:nowrap; min-width:120px; }
+.partInfo { font-size:12px; color:#b8d3ea; background:#111722; border:1px solid #2a3342; border-radius:8px; padding:8px; min-height:44px; display:flex; align-items:center; }
 .row { display:flex; gap:8px; }
 button, input, select, .fileLabel { min-height:48px; border-radius:10px; border:1px solid #2a3342; background:#0f131b; color:#e8ecf2; padding:10px; }
 button { cursor:pointer; }

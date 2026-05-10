@@ -5,7 +5,7 @@ import { downloadBlob } from './export/exporters';
 import { defaultState, defaultPartNames, type MaskPart, type ProjectSaveData } from './state/projectState';
 
 type RenderPlan = { baseFloor: number; renderScale: number; maxMotionScale: number; sidePadding: number; topPadding: number; bleedRisk: boolean; warnings: string[] };
-type ToolMode = 'brush-add' | 'brush-erase' | 'lasso-add' | 'lasso-erase';
+type ToolMode = 'brush-add' | 'brush-erase' | 'lasso-add' | 'lasso-erase' | 'set-pivot' | 'set-floor';
 type Point = { x: number; y: number };
 type OverlayCache = { canvas: HTMLCanvasElement | null; dirty: boolean; lastColor: string; lastOpacity: number };
 type ExportMeta = { frameCount: number; cellWidth: number; cellHeight: number; stripWidth: number; stripHeight: number; floorY: number; renderScale: number; selectedPreset: string; warnings: string[]; bleedRisk: boolean };
@@ -67,8 +67,9 @@ export function initApp(root: HTMLDivElement) {
   let isPainting = false;
   let activePointerId: number | null = null;
   let lastPaintPoint: Point | null = null;
-  let hoverPoint: Point | null = null;
   let lassoPoints: Point[] = [];
+  const pivots = new Map<string, Point>();
+  const floorContacts = new Map<string, Point>();
   let undoMaskAction: (() => void) | null = null;
   let renderRaf: number | null = null;
   let previewRaf: number | null = null;
@@ -76,7 +77,7 @@ export function initApp(root: HTMLDivElement) {
   root.innerHTML = `<div class="shell"><header class="topBar panel"><div><h1>Sprite Rig Lab</h1><p id="status" class="status">Waiting for PNG upload.</p></div><div class="fileBox"><label for="file">Upload PNG</label><input id="file" type="file" accept="image/png" /></div></header>
   <main class="workspaceArea panel"><canvas id="workspace" width="1024" height="1024"></canvas></main>
   <section class="toolDock" id="mobileDock"><div class="partChips" id="partChips"></div>
-  <div class="segmented toolModes"><button id="brushAddMode" type="button">Brush Add</button><button id="brushEraseMode" type="button">Brush Erase</button><button id="lassoAddMode" type="button">Lasso Add</button><button id="lassoEraseMode" type="button">Lasso Erase</button></div>
+  <div class="segmented toolModes"><button id="brushAddMode" type="button">Brush Add</button><button id="brushEraseMode" type="button">Brush Erase</button><button id="lassoAddMode" type="button">Lasso Add</button><button id="lassoEraseMode" type="button">Lasso Erase</button><button id="setPivotMode" type="button">Set Pivot</button><button id="setFloorMode" type="button">Set Floor Contact</button></div><div id="partInfo" class="partInfo"></div>
   <div class="row"><button id="undoMaskAction" type="button" disabled>Undo</button><button id="cancelLasso" type="button" disabled>Cancel Lasso</button></div>
   <div class="compactSlider"><label for="brushSize">Brush <span id="brushSizeValue">24</span></label><input id="brushSize" type="range" min="1" max="256" value="24" /></div>
   <div class="compactSlider"><label for="overlayOpacity">Overlay <span id="overlayOpacityValue">45%</span></label><input id="overlayOpacity" type="range" min="0.05" max="1" step="0.05" value="0.45" /></div></section>
@@ -132,10 +133,13 @@ export function initApp(root: HTMLDivElement) {
 
   const renderParts = () => {
     partChips.innerHTML = parts.map((p) => `<button class="partChip ${p.name === activePart ? 'active' : ''}" data-part="${p.name}"><span class="swatch" style="background:${p.color}"></span><span class="partName">${p.name}</span><span data-toggle-vis="${p.name}">${p.visible ? '👁' : '🚫'}</span></button>`).join('');
-    ['brushAddMode','brushEraseMode','lassoAddMode','lassoEraseMode'].forEach((id, i) => q<HTMLButtonElement>(id).classList.toggle('active', ['brush-add','brush-erase','lasso-add','lasso-erase'][i] === toolMode));
+    ['brushAddMode','brushEraseMode','lassoAddMode','lassoEraseMode','setPivotMode','setFloorMode'].forEach((id, i) => q<HTMLButtonElement>(id).classList.toggle('active', ['brush-add','brush-erase','lasso-add','lasso-erase','set-pivot','set-floor'][i] === toolMode));
     q<HTMLButtonElement>('cancelLasso').disabled = lassoPoints.length === 0;
     q<HTMLButtonElement>('undoMaskAction').disabled = !undoMaskAction;
     brushSizeValue.textContent = String(brushSize); overlayOpacityValue.textContent = `${Math.round(overlayOpacity * 100)}%`;
+    const pivot = pivots.get(activePart);
+    const floor = floorContacts.get(activePart);
+    q<HTMLDivElement>('partInfo').innerHTML = `<strong>${activePart}</strong> · pivot: ${pivot ? `${pivot.x},${pivot.y}` : '—'} · floor: ${floor ? `${floor.x},${floor.y}` : '—'}`;
   };
 
   const renderWorkspace = () => { /* unchanged drawing behavior */
@@ -145,6 +149,29 @@ export function initApp(root: HTMLDivElement) {
     ctx.drawImage(image, workspaceTransform.offsetX, workspaceTransform.offsetY, drawW, drawH);
     for (const part of parts) { if (!part.visible || !part.maskCanvas) continue; const entry = overlayCache.get(part.name)!; if (entry.dirty) { entry.canvas = entry.canvas ?? document.createElement('canvas'); entry.canvas.width = part.maskCanvas.width; entry.canvas.height = part.maskCanvas.height; const src = part.maskCanvas.getContext('2d')!.getImageData(0,0,part.maskCanvas.width,part.maskCanvas.height); const out = entry.canvas.getContext('2d')!.createImageData(src.width, src.height); const rgb = part.color.match(/[a-f\d]{2}/gi)?.map((v) => Number.parseInt(v,16)) ?? [255,0,255]; for (let i=0;i<src.data.length;i+=4) if (src.data[i+3]>0) { out.data[i]=rgb[0]; out.data[i+1]=rgb[1]; out.data[i+2]=rgb[2]; out.data[i+3]=Math.round(overlayOpacity*255); } entry.canvas.getContext('2d')!.putImageData(out,0,0); entry.dirty = false; } if (entry.canvas) ctx.drawImage(entry.canvas, workspaceTransform.offsetX, workspaceTransform.offsetY, drawW, drawH); }
     if (lassoPoints.length) { ctx.strokeStyle = '#9fd7ff'; ctx.beginPath(); ctx.moveTo(workspaceTransform.offsetX + lassoPoints[0]!.x * workspaceTransform.scale, workspaceTransform.offsetY + lassoPoints[0]!.y * workspaceTransform.scale); for (let i=1;i<lassoPoints.length;i++) ctx.lineTo(workspaceTransform.offsetX + lassoPoints[i]!.x * workspaceTransform.scale, workspaceTransform.offsetY + lassoPoints[i]!.y * workspaceTransform.scale); ctx.stroke(); }
+    for (const part of parts) {
+      const pivot = pivots.get(part.name);
+      if (pivot) {
+        const isActive = part.name === activePart;
+        const px = workspaceTransform.offsetX + pivot.x * workspaceTransform.scale;
+        const py = workspaceTransform.offsetY + pivot.y * workspaceTransform.scale;
+        ctx.save();
+        ctx.strokeStyle = isActive ? '#ffd166' : '#ffd16688';
+        ctx.lineWidth = isActive ? 3 : 2;
+        ctx.beginPath(); ctx.arc(px, py, isActive ? 10 : 8, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(px - 12, py); ctx.lineTo(px + 12, py); ctx.moveTo(px, py - 12); ctx.lineTo(px, py + 12); ctx.stroke();
+        ctx.restore();
+      }
+      const floor = floorContacts.get(part.name);
+      if (floor) {
+        const fx = workspaceTransform.offsetX + floor.x * workspaceTransform.scale;
+        const fy = workspaceTransform.offsetY + floor.y * workspaceTransform.scale;
+        ctx.save();
+        ctx.fillStyle = part.name === activePart ? '#7ee787' : '#7ee78799';
+        ctx.beginPath(); ctx.moveTo(fx, fy - 10); ctx.lineTo(fx + 9, fy + 8); ctx.lineTo(fx - 9, fy + 8); ctx.closePath(); ctx.fill();
+        ctx.restore();
+      }
+    }
   };
 
   const compileStrip = () => {
@@ -188,18 +215,18 @@ export function initApp(root: HTMLDivElement) {
   partChips.addEventListener('click', (e) => { const toggle = (e.target as HTMLElement).closest('[data-toggle-vis]') as HTMLElement | null; if (toggle) { const p = parts.find((x) => x.name === toggle.dataset.toggleVis); if (p) p.visible = !p.visible; renderParts(); scheduleWorkspaceRender(); return; } const chip = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-part]'); if (chip?.dataset.part) { activePart = chip.dataset.part; selectedPartLayerName = chip.dataset.part; } renderParts(); });
   q<HTMLInputElement>('brushSize').addEventListener('input', (e) => { brushSize = Number((e.target as HTMLInputElement).value); renderParts(); });
   q<HTMLInputElement>('overlayOpacity').addEventListener('input', (e) => { overlayOpacity = Number((e.target as HTMLInputElement).value); parts.forEach((p) => markPartDirty(p.name)); renderParts(); scheduleWorkspaceRender(); });
-  q<HTMLButtonElement>('brushAddMode').addEventListener('click', () => { toolMode = 'brush-add'; renderParts(); }); q<HTMLButtonElement>('brushEraseMode').addEventListener('click', () => { toolMode = 'brush-erase'; renderParts(); }); q<HTMLButtonElement>('lassoAddMode').addEventListener('click', () => { toolMode = 'lasso-add'; renderParts(); }); q<HTMLButtonElement>('lassoEraseMode').addEventListener('click', () => { toolMode = 'lasso-erase'; renderParts(); });
+  q<HTMLButtonElement>('brushAddMode').addEventListener('click', () => { toolMode = 'brush-add'; renderParts(); }); q<HTMLButtonElement>('brushEraseMode').addEventListener('click', () => { toolMode = 'brush-erase'; renderParts(); }); q<HTMLButtonElement>('lassoAddMode').addEventListener('click', () => { toolMode = 'lasso-add'; renderParts(); }); q<HTMLButtonElement>('lassoEraseMode').addEventListener('click', () => { toolMode = 'lasso-erase'; renderParts(); }); q<HTMLButtonElement>('setPivotMode').addEventListener('click', () => { toolMode = 'set-pivot'; lassoPoints = []; renderParts(); scheduleWorkspaceRender(); }); q<HTMLButtonElement>('setFloorMode').addEventListener('click', () => { toolMode = 'set-floor'; lassoPoints = []; renderParts(); scheduleWorkspaceRender(); });
   q<HTMLButtonElement>('cancelLasso').addEventListener('click', () => { lassoPoints = []; renderParts(); scheduleWorkspaceRender(); }); q<HTMLButtonElement>('undoMaskAction').addEventListener('click', () => { if (undoMaskAction) undoMaskAction(); undoMaskAction = null; renderParts(); scheduleWorkspaceRender(); });
 
   const paint = (from: Point, to: Point) => { const part = parts.find((p) => p.name === activePart); if (!part?.maskCanvas) return; if (!undoMaskAction) { const before = part.maskCanvas.getContext('2d')!.getImageData(0,0,part.maskCanvas.width,part.maskCanvas.height); undoMaskAction = () => part.maskCanvas!.getContext('2d')!.putImageData(before,0,0); } const ctx = part.maskCanvas.getContext('2d')!; ctx.globalCompositeOperation = toolMode === 'brush-add' ? 'source-over' : 'destination-out'; ctx.fillStyle = '#fff'; ctx.strokeStyle = '#fff'; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = brushSize * 2; ctx.beginPath(); ctx.moveTo(from.x, from.y); ctx.lineTo(to.x, to.y); ctx.stroke(); ctx.beginPath(); ctx.arc(to.x, to.y, brushSize,0,Math.PI*2); ctx.fill(); markPartDirty(part.name); };
   const commitLasso = () => { const part = parts.find((p) => p.name === activePart); if (!part?.maskCanvas || lassoPoints.length < 3) { lassoPoints = []; return; } const before = part.maskCanvas.getContext('2d')!.getImageData(0,0,part.maskCanvas.width,part.maskCanvas.height); undoMaskAction = () => part.maskCanvas!.getContext('2d')!.putImageData(before,0,0); const ctx = part.maskCanvas.getContext('2d')!; ctx.globalCompositeOperation = toolMode === 'lasso-add' ? 'source-over' : 'destination-out'; ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(lassoPoints[0]!.x,lassoPoints[0]!.y); for (let i=1;i<lassoPoints.length;i++) ctx.lineTo(lassoPoints[i]!.x,lassoPoints[i]!.y); ctx.closePath(); ctx.fill(); lassoPoints = []; markPartDirty(part.name); };
   const finish = (evt: PointerEvent) => { if (activePointerId !== evt.pointerId) return; workspace.releasePointerCapture(evt.pointerId); if (toolMode.startsWith('lasso-')) commitLasso(); isPainting = false; activePointerId = null; lastPaintPoint = null; renderParts(); scheduleWorkspaceRender(); };
-  workspace.addEventListener('pointerdown', (evt) => { if (!state.analysis) return; evt.preventDefault(); workspace.setPointerCapture(evt.pointerId); isPainting = true; activePointerId = evt.pointerId; const p = sourcePointFromEvent(evt); if (!p) return; lastPaintPoint = p; if (toolMode.startsWith('brush-')) paint(p,p); else lassoPoints = [p]; scheduleWorkspaceRender(); });
-  workspace.addEventListener('pointermove', (evt) => { const p = sourcePointFromEvent(evt); if (!p) return; hoverPoint = p; if (isPainting && activePointerId === evt.pointerId && lastPaintPoint) { evt.preventDefault(); if (toolMode.startsWith('brush-')) { paint(lastPaintPoint,p); lastPaintPoint = p; } else lassoPoints.push(p); } scheduleWorkspaceRender(); });
+  workspace.addEventListener('pointerdown', (evt) => { if (!state.analysis) return; evt.preventDefault(); const p = sourcePointFromEvent(evt); if (!p) return; if (toolMode === 'set-pivot') { pivots.set(activePart, p); renderParts(); scheduleWorkspaceRender(); return; } if (toolMode === 'set-floor') { floorContacts.set(activePart, p); renderParts(); scheduleWorkspaceRender(); return; } workspace.setPointerCapture(evt.pointerId); isPainting = true; activePointerId = evt.pointerId; lastPaintPoint = p; if (toolMode.startsWith('brush-')) paint(p,p); else lassoPoints = [p]; scheduleWorkspaceRender(); });
+  workspace.addEventListener('pointermove', (evt) => { const p = sourcePointFromEvent(evt); if (!p) return; if (isPainting && activePointerId === evt.pointerId && lastPaintPoint) { evt.preventDefault(); if (toolMode.startsWith('brush-')) { paint(lastPaintPoint,p); lastPaintPoint = p; } else lassoPoints.push(p); } scheduleWorkspaceRender(); });
   workspace.addEventListener('pointerup', finish); workspace.addEventListener('pointercancel', finish);
 
-  q<HTMLButtonElement>('saveProject').addEventListener('click', () => { if (!state.analysis || !sourceImageDataUrl) return; const project: ProjectSaveData = { sourceImageDataUrl, sourceImageWidth: state.analysis.width, sourceImageHeight: state.analysis.height, sourceBounds: state.analysis.sourceBounds, floorY: state.analysis.floorY, parts: parts.map((p) => ({ name: p.name, visible: p.visible, color: p.color, maskDataUrl: p.maskCanvas?.toDataURL('image/png') ?? null })), layerOrder: parts.map((p) => p.name), exportSettings: { frameCount: state.frameCount, cellWidth: state.cellWidth, cellHeight: state.cellHeight, selectedPresetLabel, recommendedPresetLabel, recommendedCellWidth, recommendedCellHeight } }; downloadBlob('sprite-rig-project.json', new Blob([JSON.stringify(project, null, 2)], { type: 'application/json' })); });
-  q<HTMLInputElement>('loadProject').addEventListener('change', async (e) => { const file = (e.target as HTMLInputElement).files?.[0]; if (!file) return; const parsed = JSON.parse(await file.text()) as ProjectSaveData; sourceImageDataUrl = parsed.sourceImageDataUrl; image = await loadPngFromFile(new File([await (await fetch(parsed.sourceImageDataUrl)).blob()], 'project.png', { type: 'image/png' })); const c = document.createElement('canvas'); c.width = image.width; c.height = image.height; c.getContext('2d')!.drawImage(image, 0, 0); state.analysis = analyzeAlpha(c.getContext('2d')!.getImageData(0,0,c.width,c.height)); for (const part of parts) { part.maskCanvas = document.createElement('canvas'); part.maskCanvas.width = state.analysis.width; part.maskCanvas.height = state.analysis.height; } for (const saved of parsed.parts) { const p = parts.find((x) => x.name === saved.name); if (!p) continue; p.visible = saved.visible; if (saved.maskDataUrl && p.maskCanvas) { const m = await loadPngFromFile(new File([await (await fetch(saved.maskDataUrl)).blob()], 'mask.png', { type: 'image/png' })); p.maskCanvas.getContext('2d')!.drawImage(m, 0, 0); } markPartDirty(p.name); } renderParts(); scheduleWorkspaceRender(); setStatus('Loaded project JSON.'); });
+  q<HTMLButtonElement>('saveProject').addEventListener('click', () => { if (!state.analysis || !sourceImageDataUrl) return; const project: ProjectSaveData = { sourceImageDataUrl, sourceImageWidth: state.analysis.width, sourceImageHeight: state.analysis.height, sourceBounds: state.analysis.sourceBounds, floorY: state.analysis.floorY, parts: parts.map((p) => ({ name: p.name, visible: p.visible, color: p.color, maskDataUrl: p.maskCanvas?.toDataURL('image/png') ?? null })), pivots: Object.fromEntries(parts.map((p) => [p.name, pivots.get(p.name)])), floorContacts: Object.fromEntries(parts.map((p) => [p.name, floorContacts.get(p.name)])), layerOrder: parts.map((p) => p.name), exportSettings: { frameCount: state.frameCount, cellWidth: state.cellWidth, cellHeight: state.cellHeight, selectedPresetLabel, recommendedPresetLabel, recommendedCellWidth, recommendedCellHeight } }; downloadBlob('sprite-rig-project.json', new Blob([JSON.stringify(project, null, 2)], { type: 'application/json' })); });
+  q<HTMLInputElement>('loadProject').addEventListener('change', async (e) => { const file = (e.target as HTMLInputElement).files?.[0]; if (!file) return; const parsed = JSON.parse(await file.text()) as ProjectSaveData; sourceImageDataUrl = parsed.sourceImageDataUrl; image = await loadPngFromFile(new File([await (await fetch(parsed.sourceImageDataUrl)).blob()], 'project.png', { type: 'image/png' })); const c = document.createElement('canvas'); c.width = image.width; c.height = image.height; c.getContext('2d')!.drawImage(image, 0, 0); state.analysis = analyzeAlpha(c.getContext('2d')!.getImageData(0,0,c.width,c.height)); for (const part of parts) { part.maskCanvas = document.createElement('canvas'); part.maskCanvas.width = state.analysis.width; part.maskCanvas.height = state.analysis.height; } for (const saved of parsed.parts) { const p = parts.find((x) => x.name === saved.name); if (!p) continue; p.visible = saved.visible; if (saved.maskDataUrl && p.maskCanvas) { const m = await loadPngFromFile(new File([await (await fetch(saved.maskDataUrl)).blob()], 'mask.png', { type: 'image/png' })); p.maskCanvas.getContext('2d')!.drawImage(m, 0, 0); } markPartDirty(p.name); } pivots.clear(); floorContacts.clear(); for (const part of parts) { const pv = parsed.pivots?.[part.name]; const fc = parsed.floorContacts?.[part.name]; if (pv) pivots.set(part.name, pv); if (fc) floorContacts.set(part.name, fc); } renderParts(); scheduleWorkspaceRender(); setStatus('Loaded project JSON.'); });
 
   renderParts(); scheduleWorkspaceRender(); startPreviewLoop(); selfCheck();
 }
