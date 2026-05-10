@@ -1,27 +1,31 @@
 :root {
   font-family: Inter, system-ui, sans-serif;
   color: #eaf0ff;
-  background: radial-gradient(circle at 20% -20%, #3f1d71 0%, #0b0e15 45%, #07090f 100%);
+  background: radial-gradient(circle at 10% -30%, #40207e 0%, #0b0e15 40%, #06080d 100%);
+  --panel: #0b1017;
+  --panel-soft: #111824;
+  --line: #1d2637;
+  --accent: #7a47f6;
 }
 * { box-sizing: border-box; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 html, body { margin: 0; background: #07090f; overscroll-behavior: none; }
-#app { max-width: 1320px; margin: 0 auto; padding: 8px; }
-.shell { display: flex; flex-direction: column; gap: 8px; }
+#app { max-width: 1420px; margin: 0 auto; padding: 8px; }
+.shell { display: flex; flex-direction: column; gap: 6px; }
 .panel {
-  background: linear-gradient(180deg, #121621 0%, #0b1018 100%);
-  border: 1px solid #1f2a3d;
+  background: linear-gradient(180deg, #0f151f 0%, #090d14 100%);
+  border: 1px solid #1c2739;
   border-radius: 14px;
-  box-shadow: 0 12px 30px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.03);
+  box-shadow: 0 8px 24px rgba(0,0,0,.4), inset 0 0 0 1px rgba(255,255,255,.03);
   padding: 10px;
 }
-.topBar { display: grid; grid-template-columns: 1fr 1.4fr auto; align-items: center; gap: 10px; }
-.brandBlock h1 { margin: 0; color: #f4f7ff; letter-spacing: .03em; font-size: 36px; font-weight: 800; }
+.topBar { display: grid; grid-template-columns: 1fr 1.3fr auto; align-items: center; gap: 10px; }
+.brandBlock h1 { margin: 0; color: #f4f7ff; letter-spacing: .02em; font-size: 40px; font-weight: 800; }
 .projectButtons { display: grid; grid-template-columns: repeat(3, minmax(130px,1fr)); gap: 8px; }
 .savedCluster { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
 .status { margin: 0; font-size: 12px; color: #9fb0cb; }
 .status.error { color: #ff8f9d; }
-.statusRow { display: flex; align-items: center; gap: 22px; color: #c5d0e6; font-size: 18px; }
-.savedBadge { color: #b3ffd0; background: rgba(19, 66, 34, .4); border: 1px solid #2f6e48; border-radius: 999px; padding: 6px 12px; font-size: 15px; }
+.statusRow { display: flex; align-items: center; gap: 28px; color: #c5d0e6; font-size: 30px; font-weight: 500; }
+.savedBadge { color: #b3ffd0; background: rgba(19, 66, 34, .4); border: 1px solid #2f6e48; border-radius: 999px; padding: 8px 14px; font-size: 18px; }
 .settingsStub { margin-left: auto; opacity: .8; }
 .workspaceShell { display: grid; grid-template-columns: 58px minmax(0,1fr) 230px; gap: 8px; padding: 8px; }
 .zoomRail, .inspector { background: linear-gradient(180deg, #101723, #0a0f17); border: 1px solid #202c40; border-radius: 12px; }
@@ -31,29 +35,35 @@ canvas { width: 100%; background: repeating-conic-gradient(#4f5056 0% 25%, #5a5b
 .inspector { padding: 12px; font-size: 14px; color: #c7d0e2; }
 .partChipsWrap { padding: 10px; }
 .partChips { display: flex; gap: 10px; overflow-x: auto; }
-.partChip { min-width: 160px; }
+.partChip { min-width: 140px; font-size: 28px; display: flex; align-items: center; gap: 10px; }
+.partChip .partName { flex: 1; text-align: left; }
+.partChip .swatch { width: 14px; height: 14px; border-radius: 999px; border: 1px solid rgba(255,255,255,.2); }
 .modeTabs { display: grid; grid-template-columns: repeat(4,1fr); gap: 0; padding: 0; overflow: hidden; }
-.modeTabs button { border-radius: 0; border: 0; border-right: 1px solid #222f45; min-height: 64px; font-size: 34px; }
+.modeTabs button { border-radius: 0; border: 0; border-right: 1px solid #222f45; min-height: 84px; font-size: 42px; background: linear-gradient(180deg,#0e1521,#090d14); }
 .modeTabs button:last-child { border-right: 0; }
 .modeControls { display: flex; flex-direction: column; gap: 10px; }
 .segmented, .row { display: flex; flex-wrap: wrap; gap: 8px; }
 .controlGrid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
 button, input, select, .fileLabel {
   min-height: 44px; border-radius: 10px; border: 1px solid #243146; color: #edf2ff;
-  background: linear-gradient(180deg, #141b29, #0d131f); padding: 10px 12px;
+  background: linear-gradient(180deg, #151d2a, #0e1521); padding: 10px 12px;
 }
-button.active, button.primary, .fileLabel.primary { background: linear-gradient(135deg, #6e3de4, #7b42f6 40%, #4f2bbd); border-color: #8055ff; }
+button.active, button.primary, .fileLabel.primary { background: linear-gradient(135deg, #6e3de4, #7b42f6 40%, #4f2bbd); border-color: #8055ff; box-shadow: 0 0 0 1px rgba(147,112,255,.25), 0 8px 24px rgba(86,46,198,.45); }
 .fileLabel { display: flex; align-items: center; justify-content: center; }
 .fileLabel input { display: none; }
 label { display: flex; flex-direction: column; gap: 4px; }
 .compactSlider label { flex-direction: row; justify-content: space-between; }
 .tipLine, .partInfo, .transformPanel, .autoRigPanel, pre, .previewPanel { background: #0a1019; border: 1px solid #1f2a40; border-radius: 10px; padding: 10px; }
 .shellError { border: 1px solid #ff4a67; background: #4d1420; color: #ffcad4; border-radius: 8px; padding: 8px; }
+input[type="range"] { accent-color: var(--accent); }
 @media (max-width: 980px) {
   .topBar { grid-template-columns: 1fr; }
-  .statusRow { flex-wrap: wrap; font-size: 14px; gap: 8px; }
+  .brandBlock h1 { font-size: 30px; }
+  .projectButtons { grid-template-columns: 1fr 1fr 1fr; }
+  .statusRow { flex-wrap: wrap; font-size: 16px; gap: 12px; }
   .workspaceShell { grid-template-columns: 1fr; }
   .zoomRail, .inspector { display: none; }
-  .modeTabs button { font-size: 28px; min-height: 56px; }
+  .partChip { font-size: 18px; min-width: 120px; }
+  .modeTabs button { font-size: 24px; min-height: 56px; }
   .controlGrid { grid-template-columns: 1fr; }
 }
