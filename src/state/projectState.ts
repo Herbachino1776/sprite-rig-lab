@@ -25,6 +25,7 @@ export type ProjectSaveData = {
   parts: Array<{ name: string; visible: boolean; color: string; maskDataUrl: string | null }>;
   pivots: Record<string, { x: number; y: number } | undefined>;
   floorContacts: Record<string, { x: number; y: number } | undefined>;
+  transforms: Record<string, { rotationDeg: number; translateX: number; translateY: number; scaleX: number; scaleY: number } | undefined>;
   layerOrder: string[];
   exportSettings: {
     frameCount: 5 | 6;
