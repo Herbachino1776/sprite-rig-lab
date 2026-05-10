@@ -1,14 +1,72 @@
-import { analyzeAlpha } from './image/alphaAnalysis';
+import { analyzeAlpha, type SpriteAnalysis } from './image/alphaAnalysis';
 import { loadPngFromFile } from './image/loadImage';
 import { idleTransform } from './motion/idlePreset';
 import { downloadBlob } from './export/exporters';
-import { detectBleedRisk } from './qa/bleed';
 import { defaultState } from './state/projectState';
+
+type RenderPlan = {
+  baseFloor: number;
+  renderScale: number;
+  maxMotionScale: number;
+  sidePadding: number;
+  topPadding: number;
+  bleedRisk: boolean;
+  warnings: string[];
+};
+
+const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+
+function createRenderPlan(analysis: SpriteAnalysis, cellWidth: number, cellHeight: number, frameCount: number): RenderPlan {
+  const bounds = analysis.sourceBounds;
+  const sidePadding = clamp(Math.round(cellWidth * 0.05), 16, 64);
+  const topPadding = clamp(Math.round(cellHeight * 0.05), 16, 64);
+  const baseFloor = Math.round(cellHeight * 0.9);
+
+  let maxMotionScale = 1;
+  for (let frameIndex = 0; frameIndex < frameCount; frameIndex++) {
+    maxMotionScale = Math.max(maxMotionScale, idleTransform(frameIndex, frameCount).scale);
+  }
+
+  const sourceHeightAboveFloor = Math.max(1, analysis.floorY - bounds.y + 1);
+  const usableWidth = Math.max(1, cellWidth - sidePadding * 2);
+  const usableHeightAboveFloor = Math.max(1, baseFloor - topPadding);
+  const horizontalFitScale = usableWidth / Math.max(1, bounds.width * maxMotionScale);
+  const verticalFitScale = usableHeightAboveFloor / Math.max(1, sourceHeightAboveFloor * maxMotionScale);
+  const renderScale = clamp(Math.min(1, horizontalFitScale, verticalFitScale), 0.05, 1);
+
+  const maxRenderedWidth = bounds.width * renderScale * maxMotionScale;
+  const maxRenderedHeightAboveFloor = sourceHeightAboveFloor * renderScale * maxMotionScale;
+  const bleedRisk = maxRenderedWidth > cellWidth || maxRenderedHeightAboveFloor > baseFloor;
+  const warnings: string[] = [];
+
+  if (renderScale < 0.999) {
+    warnings.push(`Auto-fit scaled source to ${(renderScale * 100).toFixed(1)}% so the full sprite fits in each cell.`);
+  }
+
+  if (renderScale <= 0.55) {
+    warnings.push('Source is much taller than the selected cell. Consider a 1536 or 2048 cell height for a larger production strip.');
+  }
+
+  if (bleedRisk) {
+    warnings.push('Bleed risk remains after fitting. Increase cell width/height before export.');
+  }
+
+  return {
+    baseFloor,
+    renderScale,
+    maxMotionScale,
+    sidePadding,
+    topPadding,
+    bleedRisk,
+    warnings,
+  };
+}
 
 export function initApp(root: HTMLDivElement) {
   const state = { ...defaultState };
   let image: HTMLImageElement | null = null;
   let stripCanvas: HTMLCanvasElement | null = null;
+  let lastRenderPlan: RenderPlan | null = null;
   let previewAnimationId: number | null = null;
   let previewTimeoutId: number | null = null;
 
@@ -27,6 +85,8 @@ export function initApp(root: HTMLDivElement) {
         <button id="generate" disabled>Generate strip</button>
         <button id="png" disabled>Export PNG strip</button>
         <button id="json" disabled>Export metadata JSON</button>
+        <h3>Export report</h3>
+        <pre id="renderReport">No strip generated yet.</pre>
         <h3>Source analysis</h3>
         <pre id="meta">No sprite loaded yet.</pre>
         <p class="warn" id="warnings"></p>
@@ -42,6 +102,7 @@ export function initApp(root: HTMLDivElement) {
   const workspace = root.querySelector<HTMLCanvasElement>('#workspace')!;
   const preview = root.querySelector<HTMLCanvasElement>('#preview')!;
   const meta = root.querySelector<HTMLPreElement>('#meta')!;
+  const renderReport = root.querySelector<HTMLPreElement>('#renderReport')!;
   const warnings = root.querySelector<HTMLParagraphElement>('#warnings')!;
   const status = root.querySelector<HTMLParagraphElement>('#status')!;
   const generateButton = root.querySelector<HTMLButtonElement>('#generate')!;
@@ -68,6 +129,15 @@ export function initApp(root: HTMLDivElement) {
   const clearCanvas = (canvas: HTMLCanvasElement) => {
     const ctx = canvas.getContext('2d')!;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+  };
+
+  const resetStripState = () => {
+    stripCanvas = null;
+    lastRenderPlan = null;
+    setExportReady(false);
+    resetPreviewLoop();
+    clearCanvas(preview);
+    renderReport.textContent = 'No strip generated yet.';
   };
 
   const renderWorkspace = () => {
@@ -111,26 +181,49 @@ export function initApp(root: HTMLDivElement) {
     ctx.clearRect(0, 0, out.width, out.height);
 
     const bounds = state.analysis.sourceBounds;
-    const baseFloor = Math.round(cellHeight * 0.85);
+    const renderPlan = createRenderPlan(state.analysis, cellWidth, cellHeight, frameCount);
 
     for (let i = 0; i < frameCount; i++) {
       const tr = idleTransform(i, frameCount);
-      const scaledBoundsW = bounds.width * tr.scale;
-      const scaledBoundsH = bounds.height * tr.scale;
+      const totalScale = renderPlan.renderScale * tr.scale;
+      const scaledBoundsW = bounds.width * totalScale;
       const frameCenterX = i * cellWidth + cellWidth / 2;
-      const x = frameCenterX - scaledBoundsW / 2 - bounds.x * tr.scale;
-      const y = baseFloor - state.analysis.floorY * tr.scale;
+      const x = frameCenterX - scaledBoundsW / 2 - bounds.x * totalScale;
+      const y = renderPlan.baseFloor - state.analysis.floorY * totalScale;
 
-      ctx.drawImage(image, x, y, image.width * tr.scale, image.height * tr.scale);
-
-      if (scaledBoundsH > cellHeight || scaledBoundsW > cellWidth) {
-        setStatus('Strip generated, but the sprite is larger than the selected cell size.', true);
-      }
+      ctx.drawImage(image, x, y, image.width * totalScale, image.height * totalScale);
     }
 
     stripCanvas = out;
+    lastRenderPlan = renderPlan;
     setExportReady(true);
-    setStatus(`Generated ${frameCount}-frame strip: ${out.width} x ${out.height}.`);
+
+    const report = {
+      frameCount,
+      cellWidth,
+      cellHeight,
+      stripWidth: out.width,
+      stripHeight: out.height,
+      floorY: renderPlan.baseFloor,
+      renderScale: Number(renderPlan.renderScale.toFixed(4)),
+      maxMotionScale: Number(renderPlan.maxMotionScale.toFixed(4)),
+      sidePadding: renderPlan.sidePadding,
+      topPadding: renderPlan.topPadding,
+      bleedRisk: renderPlan.bleedRisk,
+      warnings: renderPlan.warnings,
+    };
+
+    renderReport.textContent = JSON.stringify(report, null, 2);
+    warnings.textContent = [...state.analysis.warnings, ...renderPlan.warnings].join(' | ');
+
+    if (renderPlan.bleedRisk) {
+      setStatus('Strip generated with bleed risk. Increase cell size.', true);
+    } else if (renderPlan.renderScale < 0.999) {
+      setStatus(`Generated fitted ${frameCount}-frame strip: ${out.width} x ${out.height}.`);
+    } else {
+      setStatus(`Generated ${frameCount}-frame strip: ${out.width} x ${out.height}.`);
+    }
+
     renderPreview();
   };
 
@@ -164,10 +257,7 @@ export function initApp(root: HTMLDivElement) {
       setStatus(`Loading ${file.name}...`);
       warnings.textContent = '';
       meta.textContent = 'Analyzing source PNG...';
-      resetPreviewLoop();
-      clearCanvas(preview);
-      stripCanvas = null;
-      setExportReady(false);
+      resetStripState();
 
       image = await loadPngFromFile(file);
       const c = document.createElement('canvas');
@@ -188,6 +278,7 @@ export function initApp(root: HTMLDivElement) {
       clearCanvas(workspace);
       clearCanvas(preview);
       meta.textContent = 'Upload failed.';
+      renderReport.textContent = 'No strip generated yet.';
       warnings.textContent = error instanceof Error ? error.message : String(error);
       setStatus('Upload failed. See warning text below.', true);
       console.error(error);
@@ -196,22 +287,17 @@ export function initApp(root: HTMLDivElement) {
 
   root.querySelector<HTMLSelectElement>('#frameCount')!.addEventListener('change', (e) => {
     state.frameCount = Number((e.target as HTMLSelectElement).value) as 5 | 6;
-    stripCanvas = null;
-    setExportReady(false);
-    resetPreviewLoop();
-    clearCanvas(preview);
+    resetStripState();
   });
 
   root.querySelector<HTMLInputElement>('#cellW')!.addEventListener('input', (e) => {
     state.cellWidth = Number((e.target as HTMLInputElement).value);
-    stripCanvas = null;
-    setExportReady(false);
+    resetStripState();
   });
 
   root.querySelector<HTMLInputElement>('#cellH')!.addEventListener('input', (e) => {
     state.cellHeight = Number((e.target as HTMLInputElement).value);
-    stripCanvas = null;
-    setExportReady(false);
+    resetStripState();
   });
 
   generateButton.addEventListener('click', generateStrip);
@@ -228,26 +314,28 @@ export function initApp(root: HTMLDivElement) {
   });
 
   jsonButton.addEventListener('click', () => {
-    if (!state.analysis) {
-      setStatus('Upload a PNG before exporting metadata.', true);
+    if (!state.analysis || !lastRenderPlan) {
+      setStatus('Generate a strip before exporting metadata.', true);
       return;
     }
+
     const metadata = {
       frameCount: state.frameCount,
       cellWidth: state.cellWidth,
       cellHeight: state.cellHeight,
       stripWidth: state.frameCount * state.cellWidth,
       stripHeight: state.cellHeight,
-      floorY: Math.round(state.cellHeight * 0.85),
+      floorY: lastRenderPlan.baseFloor,
       anchorX: Math.round(state.cellWidth / 2),
+      renderScale: Number(lastRenderPlan.renderScale.toFixed(4)),
+      maxMotionScale: Number(lastRenderPlan.maxMotionScale.toFixed(4)),
+      sidePadding: lastRenderPlan.sidePadding,
+      topPadding: lastRenderPlan.topPadding,
       alphaVerified: state.analysis.alphaVerified,
       sourceBounds: state.analysis.sourceBounds,
-      bleedRisk: detectBleedRisk(
-        state.analysis.sourceBounds.width,
-        state.analysis.sourceBounds.height,
-        state.cellWidth,
-        state.cellHeight,
-      ),
+      sourceFloorY: state.analysis.floorY,
+      bleedRisk: lastRenderPlan.bleedRisk,
+      warnings: [...state.analysis.warnings, ...lastRenderPlan.warnings],
     };
     downloadBlob('sprite-strip.json', new Blob([JSON.stringify(metadata, null, 2)], { type: 'application/json' }));
   });
