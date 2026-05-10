@@ -9,6 +9,7 @@ type ToolMode = 'brush-add' | 'brush-erase' | 'lasso-add' | 'lasso-erase';
 type Point = { x: number; y: number };
 type OverlayCache = { canvas: HTMLCanvasElement | null; dirty: boolean; lastColor: string; lastOpacity: number };
 type ExportMeta = { frameCount: number; cellWidth: number; cellHeight: number; stripWidth: number; stripHeight: number; floorY: number; renderScale: number; selectedPreset: string; warnings: string[]; bleedRisk: boolean };
+type PreviewMode = 'idle-strip' | 'part-layer' | 'composite-parts';
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 const exportSizePresets = [
@@ -55,6 +56,9 @@ export function initApp(root: HTMLDivElement) {
   let recommendedCellHeight = 2048;
   let exportMeta: ExportMeta | null = null;
   let stalePreview = true;
+  let previewMode: PreviewMode = 'idle-strip';
+  let selectedPartLayerName = defaultPartNames[0] as string;
+  const extractedPartLayers = new Map<string, HTMLCanvasElement>();
 
   let activePart = defaultPartNames[0] as string;
   let toolMode: ToolMode = 'brush-add';
@@ -76,7 +80,7 @@ export function initApp(root: HTMLDivElement) {
   <div class="row"><button id="undoMaskAction" type="button" disabled>Undo</button><button id="cancelLasso" type="button" disabled>Cancel Lasso</button></div>
   <div class="compactSlider"><label for="brushSize">Brush <span id="brushSizeValue">24</span></label><input id="brushSize" type="range" min="1" max="256" value="24" /></div>
   <div class="compactSlider"><label for="overlayOpacity">Overlay <span id="overlayOpacityValue">45%</span></label><input id="overlayOpacity" type="range" min="0.05" max="1" step="0.05" value="0.45" /></div></section>
-  <section class="panel stack"><details open><summary>Export & Preview</summary><div class="controls"><div class="row"><label>Frames<select id="frameCount"><option value="5">5</option><option value="6" selected>6</option></select></label><label>Cell W<input id="cellWidth" type="number" min="64" step="64" value="1024" /></label><label>Cell H<input id="cellHeight" type="number" min="64" step="64" value="1024" /></label></div><div class="presetRow" id="presetRow"></div><div class="row"><button id="generateButton" class="primary">Generate Strip</button><button id="pngButton">Export PNG Strip</button><button id="jsonButton">Export Metadata JSON</button></div><canvas id="preview" width="1024" height="1024"></canvas><pre id="renderReport"></pre></div></details>
+  <section class="panel stack"><details open><summary>Export & Preview</summary><div class="controls"><div class="row"><label>Frames<select id="frameCount"><option value="5">5</option><option value="6" selected>6</option></select></label><label>Cell W<input id="cellWidth" type="number" min="64" step="64" value="1024" /></label><label>Cell H<input id="cellHeight" type="number" min="64" step="64" value="1024" /></label></div><div class="presetRow" id="presetRow"></div><div class="row"><button id="generateButton" class="primary">Generate Strip</button><button id="pngButton">Export PNG Strip</button><button id="jsonButton">Export Metadata JSON</button></div><div class="row"><button id="buildPartLayersButton" type="button">Build Part Layers</button><button id="exportSelectedPartButton" type="button">Export Selected Part PNG</button></div><div class="row"><label>Preview Mode<select id="previewMode"><option value="idle-strip">Idle Strip</option><option value="part-layer">Part Layer Preview</option><option value="composite-parts">Composite Parts Preview</option></select></label></div><canvas id="preview" width="1024" height="1024"></canvas><pre id="renderReport"></pre></div></details>
   <details><summary>Source Analysis</summary><pre id="sourceQuality">No source loaded.</pre></details>
   <details><summary>Project Save/Load</summary><div class="row"><button id="saveProject" disabled>Save Project JSON</button><label class="fileLabel">Load<input id="loadProject" type="file" accept="application/json" /></label></div></details>
   <div id="shellError" class="shellError" hidden></div></section></div>`;
@@ -102,6 +106,22 @@ export function initApp(root: HTMLDivElement) {
 
   const ensureMaskCanvases = () => { if (!state.analysis) return; for (const p of parts) { if (!p.maskCanvas) { p.maskCanvas = document.createElement('canvas'); p.maskCanvas.width = state.analysis.width; p.maskCanvas.height = state.analysis.height; } if (!overlayCache.has(p.name)) overlayCache.set(p.name, { canvas: null, dirty: true, lastColor: p.color, lastOpacity: overlayOpacity }); } };
   const markPartDirty = (name: string) => { const e = overlayCache.get(name); if (e) e.dirty = true; markStale(); };
+  const hasMaskPixels = (canvas: HTMLCanvasElement) => { const data = canvas.getContext('2d')!.getImageData(0,0,canvas.width,canvas.height).data; for (let i=3;i<data.length;i+=4) if (data[i]>0) return true; return false; };
+  const buildPartLayers = () => {
+    if (!image || !state.analysis) return;
+    ensureMaskCanvases();
+    const sourceCanvas = document.createElement('canvas'); sourceCanvas.width = state.analysis.width; sourceCanvas.height = state.analysis.height; sourceCanvas.getContext('2d')!.drawImage(image,0,0);
+    extractedPartLayers.clear();
+    for (const part of parts) {
+      if (!part.visible || !part.maskCanvas || !hasMaskPixels(part.maskCanvas)) continue;
+      const layer = document.createElement('canvas');
+      layer.width = state.analysis.width; layer.height = state.analysis.height;
+      const layerCtx = layer.getContext('2d')!; layerCtx.drawImage(sourceCanvas,0,0); layerCtx.globalCompositeOperation = 'destination-in'; layerCtx.drawImage(part.maskCanvas,0,0); layerCtx.globalCompositeOperation = 'source-over';
+      extractedPartLayers.set(part.name, layer);
+    }
+    if (!extractedPartLayers.has(selectedPartLayerName)) selectedPartLayerName = parts[0]?.name ?? selectedPartLayerName;
+    setStatus(`Built ${extractedPartLayers.size} part layer(s).`);
+  };
 
   const sourcePointFromEvent = (evt: PointerEvent): Point | null => {
     if (!state.analysis) return null;
@@ -146,13 +166,16 @@ export function initApp(root: HTMLDivElement) {
   const startPreviewLoop = () => {
     if (previewRaf) cancelAnimationFrame(previewRaf);
     let lastTs = 0; let frame = 0;
-    const tick = (ts: number) => { const ctx = preview.getContext('2d')!; ctx.clearRect(0,0,preview.width,preview.height); if (stripCanvas && !stalePreview) { if (ts - lastTs > 180) { frame = (frame + 1) % state.frameCount; lastTs = ts; } const sx = frame * state.cellWidth; ctx.drawImage(stripCanvas, sx, 0, state.cellWidth, state.cellHeight, 0, 0, preview.width, preview.height); } previewRaf = requestAnimationFrame(tick); };
+    const tick = (ts: number) => { const ctx = preview.getContext('2d')!; ctx.clearRect(0,0,preview.width,preview.height); if (previewMode === 'idle-strip') { if (stripCanvas && !stalePreview) { if (ts - lastTs > 180) { frame = (frame + 1) % state.frameCount; lastTs = ts; } const sx = frame * state.cellWidth; ctx.drawImage(stripCanvas, sx, 0, state.cellWidth, state.cellHeight, 0, 0, preview.width, preview.height); } } else { const scale = state.analysis ? Math.min(preview.width / state.analysis.width, preview.height / state.analysis.height, 1) : 1; const drawW = state.analysis ? state.analysis.width * scale : preview.width; const drawH = state.analysis ? state.analysis.height * scale : preview.height; const offsetX = (preview.width - drawW) / 2; const offsetY = (preview.height - drawH) / 2; if (previewMode === 'part-layer') { const selected = extractedPartLayers.get(selectedPartLayerName); if (selected) ctx.drawImage(selected, offsetX, offsetY, drawW, drawH); } else if (previewMode === 'composite-parts') { for (const part of parts) { if (!part.visible) continue; const layer = extractedPartLayers.get(part.name); if (layer) ctx.drawImage(layer, offsetX, offsetY, drawW, drawH); } } } previewRaf = requestAnimationFrame(tick); };
     previewRaf = requestAnimationFrame(tick);
   };
 
   q<HTMLInputElement>('file').addEventListener('change', async (e) => { const file = (e.target as HTMLInputElement).files?.[0]; if (!file) return; image = await loadPngFromFile(file); sourceImageDataUrl = await new Promise((resolve, reject) => { const fr = new FileReader(); fr.onload = () => resolve(String(fr.result)); fr.onerror = () => reject(fr.error); fr.readAsDataURL(file); }); const c = document.createElement('canvas'); c.width = image.width; c.height = image.height; c.getContext('2d')!.drawImage(image,0,0); state.analysis = analyzeAlpha(c.getContext('2d')!.getImageData(0,0,c.width,c.height)); sourceQuality.textContent = `Source: ${state.analysis.width}x${state.analysis.height}\nFloorY: ${state.analysis.floorY}`; ensureMaskCanvases(); renderParts(); scheduleWorkspaceRender(); markStale(); setStatus(`Loaded ${file.name}`); q<HTMLButtonElement>('saveProject').disabled = false; });
 
   generateButton.addEventListener('click', compileStrip);
+  q<HTMLButtonElement>('buildPartLayersButton').addEventListener('click', () => { buildPartLayers(); });
+  q<HTMLButtonElement>('exportSelectedPartButton').addEventListener('click', () => { const selected = extractedPartLayers.get(selectedPartLayerName); if (!selected) return; selected.toBlob((blob) => blob && downloadBlob(`${selectedPartLayerName}.png`, blob)); });
+  q<HTMLSelectElement>('previewMode').addEventListener('change', (e) => { previewMode = (e.target as HTMLSelectElement).value as PreviewMode; });
   pngButton.addEventListener('click', () => { if (!stripCanvas) return; stripCanvas.toBlob((blob) => blob && downloadBlob('sprite-strip.png', blob)); });
   jsonButton.addEventListener('click', () => { if (!exportMeta) return; downloadBlob('sprite-strip-metadata.json', new Blob([JSON.stringify(exportMeta, null, 2)], { type: 'application/json' })); });
 
@@ -162,7 +185,7 @@ export function initApp(root: HTMLDivElement) {
   const presetRow = q<HTMLDivElement>('presetRow'); presetRow.innerHTML = exportSizePresets.map((p) => `<button data-preset="${p.label}">${p.label}</button>`).join('');
   presetRow.addEventListener('click', (e) => { const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-preset]'); if (!b) return; const p = exportSizePresets.find((x) => x.label === b.dataset.preset)!; state.cellWidth = p.width; state.cellHeight = p.height; q<HTMLInputElement>('cellWidth').value = String(p.width); q<HTMLInputElement>('cellHeight').value = String(p.height); selectedPresetLabel = p.label; markStale(); });
 
-  partChips.addEventListener('click', (e) => { const toggle = (e.target as HTMLElement).closest('[data-toggle-vis]') as HTMLElement | null; if (toggle) { const p = parts.find((x) => x.name === toggle.dataset.toggleVis); if (p) p.visible = !p.visible; renderParts(); scheduleWorkspaceRender(); return; } const chip = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-part]'); if (chip?.dataset.part) activePart = chip.dataset.part; renderParts(); });
+  partChips.addEventListener('click', (e) => { const toggle = (e.target as HTMLElement).closest('[data-toggle-vis]') as HTMLElement | null; if (toggle) { const p = parts.find((x) => x.name === toggle.dataset.toggleVis); if (p) p.visible = !p.visible; renderParts(); scheduleWorkspaceRender(); return; } const chip = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-part]'); if (chip?.dataset.part) { activePart = chip.dataset.part; selectedPartLayerName = chip.dataset.part; } renderParts(); });
   q<HTMLInputElement>('brushSize').addEventListener('input', (e) => { brushSize = Number((e.target as HTMLInputElement).value); renderParts(); });
   q<HTMLInputElement>('overlayOpacity').addEventListener('input', (e) => { overlayOpacity = Number((e.target as HTMLInputElement).value); parts.forEach((p) => markPartDirty(p.name)); renderParts(); scheduleWorkspaceRender(); });
   q<HTMLButtonElement>('brushAddMode').addEventListener('click', () => { toolMode = 'brush-add'; renderParts(); }); q<HTMLButtonElement>('brushEraseMode').addEventListener('click', () => { toolMode = 'brush-erase'; renderParts(); }); q<HTMLButtonElement>('lassoAddMode').addEventListener('click', () => { toolMode = 'lasso-add'; renderParts(); }); q<HTMLButtonElement>('lassoEraseMode').addEventListener('click', () => { toolMode = 'lasso-erase'; renderParts(); });
