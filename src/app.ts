@@ -8,7 +8,9 @@ type RenderPlan = { baseFloor: number; renderScale: number; maxMotionScale: numb
 type ToolMode = 'brush-add' | 'brush-erase' | 'lasso-add' | 'lasso-erase' | 'set-pivot' | 'set-floor' | 'transform-part';
 type Point = { x: number; y: number };
 type OverlayCache = { canvas: HTMLCanvasElement | null; dirty: boolean; lastColor: string; lastOpacity: number };
-type ExportMeta = { frameCount: number; cellWidth: number; cellHeight: number; stripWidth: number; stripHeight: number; floorY: number; renderScale: number; selectedPreset: string; warnings: string[]; bleedRisk: boolean };
+type AnimationMode = 'whole-sprite-idle' | 'part-based-idle';
+type IdleSettings = { breathingAmount: number; headSway: number; armDrift: number; overallIntensity: number };
+type ExportMeta = { animationMode: AnimationMode; partBasedIdle: boolean; idleSettings: IdleSettings; frameCount: number; cellWidth: number; cellHeight: number; stripWidth: number; stripHeight: number; floorY: number; renderScale: number; selectedPresetLabel: string; warnings: string[]; bleedRisk: boolean };
 type PreviewMode = 'idle-strip' | 'part-layer' | 'composite-parts';
 type MaskStats = { bounds: { minX: number; maxX: number; minY: number; maxY: number; width: number; height: number }; area: number; centroid: Point; bottomCenter: Point; touchesFloor: boolean; warnings: string[] };
 
@@ -58,6 +60,9 @@ export function initApp(root: HTMLDivElement) {
   let exportMeta: ExportMeta | null = null;
   let stalePreview = true;
   let previewMode: PreviewMode = 'idle-strip';
+  let animationMode: AnimationMode = 'whole-sprite-idle';
+  const defaultIdleSettings: IdleSettings = { breathingAmount: 1, headSway: 1, armDrift: 1, overallIntensity: 1 };
+  let idleSettings: IdleSettings = { ...defaultIdleSettings };
   let selectedPartLayerName = defaultPartNames[0] as string;
   const extractedPartLayers = new Map<string, HTMLCanvasElement>();
 
@@ -85,7 +90,7 @@ export function initApp(root: HTMLDivElement) {
   <div class="row"><button id="undoMaskAction" type="button" disabled>Undo</button><button id="cancelLasso" type="button" disabled>Cancel Lasso</button></div>
   <div class="compactSlider"><label for="brushSize">Brush <span id="brushSizeValue">24</span></label><input id="brushSize" type="range" min="1" max="256" value="24" /></div>
   <div class="compactSlider"><label for="overlayOpacity">Overlay <span id="overlayOpacityValue">45%</span></label><input id="overlayOpacity" type="range" min="0.05" max="1" step="0.05" value="0.45" /></div></section>
-  <section class="panel stack"><details open><summary>Export & Preview</summary><div class="controls"><div class="row"><label>Frames<select id="frameCount"><option value="5">5</option><option value="6" selected>6</option></select></label><label>Cell W<input id="cellWidth" type="number" min="64" step="64" value="1024" /></label><label>Cell H<input id="cellHeight" type="number" min="64" step="64" value="1024" /></label></div><div class="presetRow" id="presetRow"></div><div class="row"><button id="generateButton" class="primary">Generate Strip</button><button id="pngButton">Export PNG Strip</button><button id="jsonButton">Export Metadata JSON</button></div><div class="row"><button id="buildPartLayersButton" type="button">Build Part Layers</button><button id="exportSelectedPartButton" type="button">Export Selected Part PNG</button></div><div class="row"><label>Preview Mode<select id="previewMode"><option value="idle-strip">Idle Strip</option><option value="part-layer">Part Layer Preview</option><option value="composite-parts">Composite Parts Preview</option></select></label></div><canvas id="preview" width="1024" height="1024"></canvas><pre id="renderReport"></pre></div></details>
+  <section class="panel stack"><details open><summary>Export & Preview</summary><div class="controls"><div class="row"><label>Frames<select id="frameCount"><option value="5">5</option><option value="6" selected>6</option></select></label><label>Cell W<input id="cellWidth" type="number" min="64" step="64" value="1024" /></label><label>Cell H<input id="cellHeight" type="number" min="64" step="64" value="1024" /></label></div><div class="presetRow" id="presetRow"></div><div class="segmented"><button id="wholeIdleMode" class="active" type="button">Whole Sprite Idle</button><button id="partIdleMode" type="button">Part-Based Idle</button></div><div class="compactSlider"><label for="breathingAmount">Breathing <span id="breathingAmountValue">1.00</span></label><input id="breathingAmount" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="headSway">Head sway <span id="headSwayValue">1.00</span></label><input id="headSway" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="armDrift">Arm drift <span id="armDriftValue">1.00</span></label><input id="armDrift" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="overallIntensity">Overall <span id="overallIntensityValue">1.00</span></label><input id="overallIntensity" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="row"><button id="resetIdleSettings" type="button">Reset idle settings</button></div><div class="row"><button id="generateButton" class="primary">Generate Strip</button><button id="pngButton">Export PNG Strip</button><button id="jsonButton">Export Metadata JSON</button></div><div class="row"><button id="buildPartLayersButton" type="button">Build Part Layers</button><button id="exportSelectedPartButton" type="button">Export Selected Part PNG</button></div><div class="row"><label>Preview Mode<select id="previewMode"><option value="idle-strip">Idle Strip</option><option value="part-layer">Part Layer Preview</option><option value="composite-parts">Composite Parts Preview</option></select></label></div><canvas id="preview" width="1024" height="1024"></canvas><pre id="renderReport"></pre></div></details>
   <details><summary>Source Analysis</summary><pre id="sourceQuality">No source loaded.</pre></details>
   <details><summary>Project Save/Load</summary><div class="row"><button id="saveProject" disabled>Save Project JSON</button><label class="fileLabel">Load<input id="loadProject" type="file" accept="application/json" /></label></div></details>
   <div id="shellError" class="shellError" hidden></div></section></div>`;
@@ -306,16 +311,43 @@ export function initApp(root: HTMLDivElement) {
 
   const compileStrip = () => {
     if (!image || !state.analysis) return;
+    if (animationMode === 'part-based-idle' && !extractedPartLayers.size) { setStatus('Build Part Layers first.', true); return; }
     const plan = createRenderPlan(state.analysis, state.cellWidth, state.cellHeight, state.frameCount);
     const canvas = document.createElement('canvas'); canvas.width = state.cellWidth * state.frameCount; canvas.height = state.cellHeight;
     const ctx = canvas.getContext('2d')!;
     for (let i = 0; i < state.frameCount; i++) {
       const t = idleTransform(i, state.frameCount);
-      const pivotX = state.analysis.sourceBounds.x + state.analysis.sourceBounds.width / 2;
-      ctx.save(); ctx.translate(i * state.cellWidth + state.cellWidth / 2  , plan.baseFloor + t.bobY * plan.renderScale); ctx.scale(plan.renderScale * t.scale, plan.renderScale * t.scale); ctx.drawImage(image, -pivotX, -state.analysis.floorY); ctx.restore();
+      if (animationMode === 'whole-sprite-idle') {
+        const pivotX = state.analysis.sourceBounds.x + state.analysis.sourceBounds.width / 2;
+        ctx.save(); ctx.translate(i * state.cellWidth + state.cellWidth / 2  , plan.baseFloor + t.bobY * plan.renderScale); ctx.scale(plan.renderScale * t.scale, plan.renderScale * t.scale); ctx.drawImage(image, -pivotX, -state.analysis.floorY); ctx.restore();
+      } else {
+        const intensity = idleSettings.overallIntensity;
+        const phase = (i / state.frameCount) * Math.PI * 2;
+        const sortedParts = parts.slice();
+        for (const part of sortedParts) {
+          if (!part.visible) continue;
+          const layer = extractedPartLayers.get(part.name);
+          if (!layer) continue;
+          const partPivot = pivots.get(part.name) ?? { x: layer.width / 2, y: layer.height / 2 };
+          const role = part.name;
+          let bobY = 0; let rot = 0; let sx = 1; let sy = 1; let driftX = 0;
+          if (role === 'torso') { const b = 0.01 * idleSettings.breathingAmount * intensity; sx += Math.sin(phase) * b; sy += Math.sin(phase) * b * 0.7; }
+          else if (role === 'head' || role === 'horns') { bobY = Math.sin(phase + 0.5) * 2.5 * idleSettings.headSway * intensity; driftX = Math.sin(phase) * 1.6 * idleSettings.headSway * intensity; rot = Math.sin(phase + 1) * 1.5 * idleSettings.headSway * intensity; }
+          else if (role === 'front_arm' || role === 'rear_arm' || role === 'tail' || role === 'extra_01') { bobY = Math.sin(phase + 0.8) * 1.6 * idleSettings.armDrift * intensity; driftX = Math.sin(phase + 0.4) * 1.2 * idleSettings.armDrift * intensity; rot = Math.sin(phase + 0.2) * 1.8 * idleSettings.armDrift * intensity; }
+          else if (role === 'front_leg' || role === 'rear_leg') { bobY = Math.sin(phase) * 0.35 * intensity; rot = Math.sin(phase + 0.4) * 0.4 * intensity; }
+          ctx.save();
+          ctx.translate(i * state.cellWidth + state.cellWidth / 2, plan.baseFloor);
+          ctx.scale(plan.renderScale, plan.renderScale);
+          ctx.translate(partPivot.x + driftX, partPivot.y + bobY - state.analysis.floorY);
+          ctx.rotate((rot * Math.PI) / 180);
+          ctx.scale(sx, sy);
+          ctx.drawImage(layer, -partPivot.x, -partPivot.y);
+          ctx.restore();
+        }
+      }
     }
     stripCanvas = canvas; lastRenderPlan = plan; stalePreview = false;
-    exportMeta = { frameCount: state.frameCount, cellWidth: state.cellWidth, cellHeight: state.cellHeight, stripWidth: canvas.width, stripHeight: canvas.height, floorY: plan.baseFloor, renderScale: Number(plan.renderScale.toFixed(4)), selectedPreset: selectedPresetLabel, warnings: plan.warnings, bleedRisk: plan.bleedRisk };
+    exportMeta = { animationMode, partBasedIdle: animationMode === 'part-based-idle', idleSettings: { ...idleSettings }, frameCount: state.frameCount, cellWidth: state.cellWidth, cellHeight: state.cellHeight, stripWidth: canvas.width, stripHeight: canvas.height, floorY: plan.baseFloor, renderScale: Number(plan.renderScale.toFixed(4)), selectedPresetLabel, warnings: plan.warnings, bleedRisk: plan.bleedRisk };
     renderReport.textContent = JSON.stringify(exportMeta, null, 2);
     setStatus(`Generated strip ${canvas.width}x${canvas.height}`);
   };
@@ -330,6 +362,21 @@ export function initApp(root: HTMLDivElement) {
   q<HTMLInputElement>('file').addEventListener('change', async (e) => { const file = (e.target as HTMLInputElement).files?.[0]; if (!file) return; image = await loadPngFromFile(file); sourceImageDataUrl = await new Promise((resolve, reject) => { const fr = new FileReader(); fr.onload = () => resolve(String(fr.result)); fr.onerror = () => reject(fr.error); fr.readAsDataURL(file); }); const c = document.createElement('canvas'); c.width = image.width; c.height = image.height; c.getContext('2d')!.drawImage(image,0,0); state.analysis = analyzeAlpha(c.getContext('2d')!.getImageData(0,0,c.width,c.height)); sourceQuality.textContent = `Source: ${state.analysis.width}x${state.analysis.height}\nFloorY: ${state.analysis.floorY}`; ensureMaskCanvases(); renderParts(); scheduleWorkspaceRender(); markStale(); setStatus(`Loaded ${file.name}`); q<HTMLButtonElement>('saveProject').disabled = false; });
 
   generateButton.addEventListener('click', compileStrip);
+  const syncIdleReadout = () => {
+    q<HTMLSpanElement>('breathingAmountValue').textContent = idleSettings.breathingAmount.toFixed(2);
+    q<HTMLSpanElement>('headSwayValue').textContent = idleSettings.headSway.toFixed(2);
+    q<HTMLSpanElement>('armDriftValue').textContent = idleSettings.armDrift.toFixed(2);
+    q<HTMLSpanElement>('overallIntensityValue').textContent = idleSettings.overallIntensity.toFixed(2);
+    q<HTMLButtonElement>('wholeIdleMode').classList.toggle('active', animationMode === 'whole-sprite-idle');
+    q<HTMLButtonElement>('partIdleMode').classList.toggle('active', animationMode === 'part-based-idle');
+  };
+  q<HTMLButtonElement>('wholeIdleMode').addEventListener('click', () => { animationMode = 'whole-sprite-idle'; markStale(); syncIdleReadout(); });
+  q<HTMLButtonElement>('partIdleMode').addEventListener('click', () => { animationMode = 'part-based-idle'; markStale(); syncIdleReadout(); });
+  q<HTMLInputElement>('breathingAmount').addEventListener('input', (e) => { idleSettings.breathingAmount = Number((e.target as HTMLInputElement).value); markStale(); syncIdleReadout(); });
+  q<HTMLInputElement>('headSway').addEventListener('input', (e) => { idleSettings.headSway = Number((e.target as HTMLInputElement).value); markStale(); syncIdleReadout(); });
+  q<HTMLInputElement>('armDrift').addEventListener('input', (e) => { idleSettings.armDrift = Number((e.target as HTMLInputElement).value); markStale(); syncIdleReadout(); });
+  q<HTMLInputElement>('overallIntensity').addEventListener('input', (e) => { idleSettings.overallIntensity = Number((e.target as HTMLInputElement).value); markStale(); syncIdleReadout(); });
+  q<HTMLButtonElement>('resetIdleSettings').addEventListener('click', () => { idleSettings = { ...defaultIdleSettings }; q<HTMLInputElement>('breathingAmount').value = '1'; q<HTMLInputElement>('headSway').value = '1'; q<HTMLInputElement>('armDrift').value = '1'; q<HTMLInputElement>('overallIntensity').value = '1'; markStale(); syncIdleReadout(); });
   q<HTMLButtonElement>('buildPartLayersButton').addEventListener('click', () => { buildPartLayers(); });
   q<HTMLButtonElement>('autoPlacePivotsButton').addEventListener('click', runAutoRigHints);
   q<HTMLButtonElement>('exportSelectedPartButton').addEventListener('click', () => { const selected = extractedPartLayers.get(selectedPartLayerName); if (!selected) return; selected.toBlob((blob) => blob && downloadBlob(`${selectedPartLayerName}.png`, blob)); });
@@ -356,8 +403,8 @@ export function initApp(root: HTMLDivElement) {
   workspace.addEventListener('pointermove', (evt) => { const p = sourcePointFromEvent(evt); if (!p) return; if (isPainting && activePointerId === evt.pointerId && lastPaintPoint) { evt.preventDefault(); if (toolMode.startsWith('brush-')) { paint(lastPaintPoint,p); lastPaintPoint = p; } else lassoPoints.push(p); } scheduleWorkspaceRender(); });
   workspace.addEventListener('pointerup', finish); workspace.addEventListener('pointercancel', finish);
 
-  q<HTMLButtonElement>('saveProject').addEventListener('click', () => { if (!state.analysis || !sourceImageDataUrl) return; const project: ProjectSaveData = { sourceImageDataUrl, sourceImageWidth: state.analysis.width, sourceImageHeight: state.analysis.height, sourceBounds: state.analysis.sourceBounds, floorY: state.analysis.floorY, parts: parts.map((p) => ({ name: p.name, visible: p.visible, color: p.color, maskDataUrl: p.maskCanvas?.toDataURL('image/png') ?? null })), pivots: Object.fromEntries(parts.map((p) => [p.name, pivots.get(p.name)])), floorContacts: Object.fromEntries(parts.map((p) => [p.name, floorContacts.get(p.name)])), transforms: Object.fromEntries(parts.map((p) => [p.name, getTransform(p.name)])), layerOrder: parts.map((p) => p.name), exportSettings: { frameCount: state.frameCount, cellWidth: state.cellWidth, cellHeight: state.cellHeight, selectedPresetLabel, recommendedPresetLabel, recommendedCellWidth, recommendedCellHeight } }; downloadBlob('sprite-rig-project.json', new Blob([JSON.stringify(project, null, 2)], { type: 'application/json' })); });
-  q<HTMLInputElement>('loadProject').addEventListener('change', async (e) => { const file = (e.target as HTMLInputElement).files?.[0]; if (!file) return; const parsed = JSON.parse(await file.text()) as ProjectSaveData; sourceImageDataUrl = parsed.sourceImageDataUrl; image = await loadPngFromFile(new File([await (await fetch(parsed.sourceImageDataUrl)).blob()], 'project.png', { type: 'image/png' })); const c = document.createElement('canvas'); c.width = image.width; c.height = image.height; c.getContext('2d')!.drawImage(image, 0, 0); state.analysis = analyzeAlpha(c.getContext('2d')!.getImageData(0,0,c.width,c.height)); for (const part of parts) { part.maskCanvas = document.createElement('canvas'); part.maskCanvas.width = state.analysis.width; part.maskCanvas.height = state.analysis.height; } for (const saved of parsed.parts) { const p = parts.find((x) => x.name === saved.name); if (!p) continue; p.visible = saved.visible; if (saved.maskDataUrl && p.maskCanvas) { const m = await loadPngFromFile(new File([await (await fetch(saved.maskDataUrl)).blob()], 'mask.png', { type: 'image/png' })); p.maskCanvas.getContext('2d')!.drawImage(m, 0, 0); } markPartDirty(p.name); } pivots.clear(); floorContacts.clear(); partTransforms.clear(); for (const part of parts) { const pv = parsed.pivots?.[part.name]; const fc = parsed.floorContacts?.[part.name]; const tf = parsed.transforms?.[part.name]; if (pv) pivots.set(part.name, pv); if (fc) floorContacts.set(part.name, fc); if (tf) partTransforms.set(part.name, tf); } renderParts(); scheduleWorkspaceRender(); setStatus('Loaded project JSON.'); });
+  q<HTMLButtonElement>('saveProject').addEventListener('click', () => { if (!state.analysis || !sourceImageDataUrl) return; const project: ProjectSaveData = { sourceImageDataUrl, sourceImageWidth: state.analysis.width, sourceImageHeight: state.analysis.height, sourceBounds: state.analysis.sourceBounds, floorY: state.analysis.floorY, parts: parts.map((p) => ({ name: p.name, visible: p.visible, color: p.color, maskDataUrl: p.maskCanvas?.toDataURL('image/png') ?? null })), pivots: Object.fromEntries(parts.map((p) => [p.name, pivots.get(p.name)])), floorContacts: Object.fromEntries(parts.map((p) => [p.name, floorContacts.get(p.name)])), transforms: Object.fromEntries(parts.map((p) => [p.name, getTransform(p.name)])), layerOrder: parts.map((p) => p.name), exportSettings: { frameCount: state.frameCount, cellWidth: state.cellWidth, cellHeight: state.cellHeight, selectedPresetLabel, recommendedPresetLabel, recommendedCellWidth, recommendedCellHeight }, animationMode, idleSettings: { ...idleSettings } }; downloadBlob('sprite-rig-project.json', new Blob([JSON.stringify(project, null, 2)], { type: 'application/json' })); });
+  q<HTMLInputElement>('loadProject').addEventListener('change', async (e) => { const file = (e.target as HTMLInputElement).files?.[0]; if (!file) return; const parsed = JSON.parse(await file.text()) as ProjectSaveData; sourceImageDataUrl = parsed.sourceImageDataUrl; image = await loadPngFromFile(new File([await (await fetch(parsed.sourceImageDataUrl)).blob()], 'project.png', { type: 'image/png' })); const c = document.createElement('canvas'); c.width = image.width; c.height = image.height; c.getContext('2d')!.drawImage(image, 0, 0); state.analysis = analyzeAlpha(c.getContext('2d')!.getImageData(0,0,c.width,c.height)); for (const part of parts) { part.maskCanvas = document.createElement('canvas'); part.maskCanvas.width = state.analysis.width; part.maskCanvas.height = state.analysis.height; } for (const saved of parsed.parts) { const p = parts.find((x) => x.name === saved.name); if (!p) continue; p.visible = saved.visible; if (saved.maskDataUrl && p.maskCanvas) { const m = await loadPngFromFile(new File([await (await fetch(saved.maskDataUrl)).blob()], 'mask.png', { type: 'image/png' })); p.maskCanvas.getContext('2d')!.drawImage(m, 0, 0); } markPartDirty(p.name); } pivots.clear(); floorContacts.clear(); partTransforms.clear(); for (const part of parts) { const pv = parsed.pivots?.[part.name]; const fc = parsed.floorContacts?.[part.name]; const tf = parsed.transforms?.[part.name]; if (pv) pivots.set(part.name, pv); if (fc) floorContacts.set(part.name, fc); if (tf) partTransforms.set(part.name, tf); } animationMode = parsed.animationMode ?? 'whole-sprite-idle'; idleSettings = { ...defaultIdleSettings, ...parsed.idleSettings }; q<HTMLInputElement>('breathingAmount').value = String(idleSettings.breathingAmount); q<HTMLInputElement>('headSway').value = String(idleSettings.headSway); q<HTMLInputElement>('armDrift').value = String(idleSettings.armDrift); q<HTMLInputElement>('overallIntensity').value = String(idleSettings.overallIntensity); syncIdleReadout(); renderParts(); scheduleWorkspaceRender(); setStatus('Loaded project JSON.'); });
 
 
   q<HTMLInputElement>('rotationDeg').addEventListener('input', (e) => { const t = getTransform(activePart); t.rotationDeg = Number((e.target as HTMLInputElement).value); renderParts(); });
@@ -370,5 +417,5 @@ export function initApp(root: HTMLDivElement) {
   q<HTMLButtonElement>('resetPartTransform').addEventListener('click', () => { partTransforms.set(activePart, { rotationDeg: 0, translateX: 0, translateY: 0, scaleX: 1, scaleY: 1 }); renderParts(); });
   q<HTMLButtonElement>('resetAllTransforms').addEventListener('click', () => { for (const part of parts) partTransforms.set(part.name, { rotationDeg: 0, translateX: 0, translateY: 0, scaleX: 1, scaleY: 1 }); renderParts(); });
 
-  renderParts(); scheduleWorkspaceRender(); startPreviewLoop(); selfCheck();
+  syncIdleReadout(); renderParts(); scheduleWorkspaceRender(); startPreviewLoop(); selfCheck();
 }
