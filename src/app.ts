@@ -92,14 +92,14 @@ export function initApp(root: HTMLDivElement) {
       </section>
       <section class="panel">
         <h3>Manual Mask Editor</h3>
-        <label>Active part</label><select id="activePart"></select>
-        <div class="partChips" id="partChips"></div>
-        <div class="row"><button id="partUp" type="button">Move Part Up</button><button id="partDown" type="button">Move Part Down</button></div>
-        <label>Brush mode</label><div class="row"><button id="paintMode" type="button">Paint Mask</button><button id="eraseMode" type="button">Erase Mask</button></div>
-        <label>Brush size</label><input id="brushSize" type="range" min="1" max="256" value="24" />
-        <label>Overlay opacity</label><input id="overlayOpacity" type="range" min="0.05" max="1" step="0.05" value="0.45" />
-        <div id="partsList" class="partsList"></div>
         <h3>Workspace</h3><canvas id="workspace" width="1024" height="1024"></canvas>
+        <div class="mobileDock" id="mobileDock">
+          <div class="partChips" id="partChips"></div>
+          <div class="row segmented"><button id="paintMode" type="button">Paint</button><button id="eraseMode" type="button">Erase</button></div>
+          <div class="compactSlider"><label for="brushSize">Brush <span id="brushSizeValue">24</span></label><input id="brushSize" type="range" min="1" max="256" value="24" /></div>
+          <div class="compactSlider"><label for="overlayOpacity">Overlay <span id="overlayOpacityValue">45%</span></label><input id="overlayOpacity" type="range" min="0.05" max="1" step="0.05" value="0.45" /></div>
+        </div>
+        <div class="layerRow"><span>Layer</span><div class="row"><button id="partUp" type="button">Up</button><button id="partDown" type="button">Down</button></div></div>
         <h3>Preview loop</h3><canvas id="preview" width="1024" height="1024"></canvas>
       </section>
     </div>`;
@@ -118,13 +118,13 @@ export function initApp(root: HTMLDivElement) {
   const jsonButton = document.createElement('button');
   const saveProjectButton = root.querySelector<HTMLButtonElement>('#saveProject')!;
 
-  const activePartSelect = root.querySelector<HTMLSelectElement>('#activePart')!;
-  const partsList = root.querySelector<HTMLDivElement>('#partsList')!;
   const partChips = root.querySelector<HTMLDivElement>('#partChips')!;
   const partUpButton = root.querySelector<HTMLButtonElement>('#partUp')!;
   const partDownButton = root.querySelector<HTMLButtonElement>('#partDown')!;
   const paintModeButton = root.querySelector<HTMLButtonElement>('#paintMode')!;
   const eraseModeButton = root.querySelector<HTMLButtonElement>('#eraseMode')!;
+  const brushSizeValue = root.querySelector<HTMLSpanElement>('#brushSizeValue')!;
+  const overlayOpacityValue = root.querySelector<HTMLSpanElement>('#overlayOpacityValue')!;
 
   const workspaceTransform = { offsetX: 0, offsetY: 0, scale: 1 };
   const parts: MaskPart[] = defaultPartNames.map((name, i) => ({ name, visible: true, color: partColors[i % partColors.length], maskCanvas: null }));
@@ -157,10 +157,11 @@ export function initApp(root: HTMLDivElement) {
   };
 
   const renderPartsPanel = () => {
-    activePartSelect.innerHTML = parts.map((p) => `<option value="${p.name}">${p.name}</option>`).join('');
-    activePartSelect.value = activePart;
-    partsList.innerHTML = parts.map((p) => `<label class="partItem"><input type="checkbox" data-vis="${p.name}" ${p.visible ? 'checked' : ''}/> <span class="swatch" style="background:${p.color}"></span>${p.name}</label>`).join('');
-    partChips.innerHTML = parts.map((p) => `<button type="button" class="partChip ${p.name === activePart ? 'active' : ''}" data-part="${p.name}"><span class="swatch" style="background:${p.color}"></span><span>${p.name}</span><span>${p.visible ? '👁' : '🚫'}</span></button>`).join('');
+    partChips.innerHTML = parts.map((p) => `<button type="button" class="partChip ${p.name === activePart ? 'active' : ''}" data-part="${p.name}"><span class="swatch" style="background:${p.color}"></span><span class="partName">${p.name}</span><span class="eyeButton" data-toggle-vis="${p.name}" role="button" aria-label="${p.visible ? 'Hide' : 'Show'} ${p.name}">${p.visible ? '👁' : '🚫'}</span></button>`).join('');
+    paintModeButton.classList.toggle('active', brushMode === 'paint');
+    eraseModeButton.classList.toggle('active', brushMode === 'erase');
+    brushSizeValue.textContent = String(brushSize);
+    overlayOpacityValue.textContent = `${Math.round(overlayOpacity * 100)}%`;
   };
 
   const rebuildOverlay = (part: MaskPart, entry: OverlayCache) => {
@@ -259,18 +260,23 @@ export function initApp(root: HTMLDivElement) {
     ensureMaskCanvases(); renderPartsPanel(); scheduleWorkspaceRender(); setStatus(`Loaded ${file.name}: ${state.analysis.width} x ${state.analysis.height}.`);
   });
 
-  activePartSelect.addEventListener('change', (e) => { activePart = (e.target as HTMLSelectElement).value; renderPartsPanel(); scheduleWorkspaceRender(); });
   partChips.addEventListener('click', (e) => {
+    const toggle = (e.target as HTMLElement).closest<HTMLElement>('[data-toggle-vis]');
+    if (toggle) {
+      e.stopPropagation();
+      const p = parts.find((part) => part.name === toggle.dataset.toggleVis);
+      if (p) { p.visible = !p.visible; renderPartsPanel(); scheduleWorkspaceRender(); }
+      return;
+    }
     const button = (e.target as HTMLElement).closest<HTMLButtonElement>('[data-part]'); if (!button) return;
     activePart = button.dataset.part!; renderPartsPanel(); scheduleWorkspaceRender();
   });
-  partsList.addEventListener('change', (e) => { const el = e.target as HTMLInputElement; const p = parts.find((part) => part.name === el.dataset.vis); if (p) { p.visible = el.checked; renderPartsPanel(); scheduleWorkspaceRender(); } });
   partUpButton.addEventListener('click', () => { const i = parts.findIndex((p) => p.name === activePart); if (i > 0) { [parts[i - 1], parts[i]] = [parts[i], parts[i - 1]]; renderPartsPanel(); scheduleWorkspaceRender(); } });
   partDownButton.addEventListener('click', () => { const i = parts.findIndex((p) => p.name === activePart); if (i >= 0 && i < parts.length - 1) { [parts[i + 1], parts[i]] = [parts[i], parts[i + 1]]; renderPartsPanel(); scheduleWorkspaceRender(); } });
-  paintModeButton.addEventListener('click', () => { brushMode = 'paint'; });
-  eraseModeButton.addEventListener('click', () => { brushMode = 'erase'; });
-  root.querySelector<HTMLInputElement>('#brushSize')!.addEventListener('input', (e) => { brushSize = Number((e.target as HTMLInputElement).value); scheduleWorkspaceRender(); });
-  root.querySelector<HTMLInputElement>('#overlayOpacity')!.addEventListener('input', (e) => { overlayOpacity = Number((e.target as HTMLInputElement).value); for (const p of parts) markPartDirty(p.name); scheduleWorkspaceRender(); });
+  paintModeButton.addEventListener('click', () => { brushMode = 'paint'; renderPartsPanel(); });
+  eraseModeButton.addEventListener('click', () => { brushMode = 'erase'; renderPartsPanel(); });
+  root.querySelector<HTMLInputElement>('#brushSize')!.addEventListener('input', (e) => { brushSize = Number((e.target as HTMLInputElement).value); renderPartsPanel(); scheduleWorkspaceRender(); });
+  root.querySelector<HTMLInputElement>('#overlayOpacity')!.addEventListener('input', (e) => { overlayOpacity = Number((e.target as HTMLInputElement).value); for (const p of parts) markPartDirty(p.name); renderPartsPanel(); scheduleWorkspaceRender(); });
 
   saveProjectButton.addEventListener('click', () => {
     if (!state.analysis || !sourceImageDataUrl) return;
