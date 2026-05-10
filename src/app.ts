@@ -416,21 +416,44 @@ export function initApp(root: HTMLDivElement) {
   q<HTMLInputElement>('file').addEventListener('change', async (e) => { const file = (e.target as HTMLInputElement).files?.[0]; if (!file) return; image = await loadPngFromFile(file); sourceImageDataUrl = await new Promise((resolve, reject) => { const fr = new FileReader(); fr.onload = () => resolve(String(fr.result)); fr.onerror = () => reject(fr.error); fr.readAsDataURL(file); }); const c = document.createElement('canvas'); c.width = image.width; c.height = image.height; c.getContext('2d')!.drawImage(image,0,0); state.analysis = analyzeAlpha(c.getContext('2d')!.getImageData(0,0,c.width,c.height)); sourceQuality.textContent = `Source: ${state.analysis.width}x${state.analysis.height}\nFloorY: ${state.analysis.floorY}`; ensureMaskCanvases(); renderParts(); scheduleWorkspaceRender(); markStale(); setStatus(`Loaded ${file.name}`); q<HTMLSpanElement>('fileStat').textContent = `File: ${file.name}`; q<HTMLSpanElement>('dimensionsStat').textContent = `Dimensions: ${image.width}×${image.height}`; q<HTMLSpanElement>('savedStat').textContent = 'Loaded'; q<HTMLButtonElement>('saveProject').disabled = false; });
 
   generateButton.addEventListener('click', compileStrip);
+  const syncShellModeControls = () => {
+    ['modeMask', 'modeRig', 'modeAnimate', 'modeExport'].forEach((id, index) => q<HTMLButtonElement>(id).classList.toggle('active', ['mask', 'rig', 'animate', 'export'][index] === shellMode));
+    q<HTMLDivElement>('maskControls').hidden = shellMode !== 'mask';
+    q<HTMLDivElement>('rigControls').hidden = shellMode !== 'rig';
+    q<HTMLDivElement>('animateControls').hidden = shellMode !== 'animate';
+    q<HTMLDivElement>('exportControls').hidden = shellMode !== 'export';
+    q<HTMLDivElement>('transformPanel').hidden = shellMode !== 'rig' || toolMode !== 'transform-part';
+    updateStatusRow();
+  };
+  const setShellMode = (mode: ShellMode) => {
+    if (shellMode === mode) return;
+    shellMode = mode;
+    if (isPainting && activePointerId !== null) {
+      try {
+        workspace.releasePointerCapture(activePointerId);
+      } catch {}
+    }
+    isPainting = false;
+    activePointerId = null;
+    lastPaintPoint = null;
+    lassoPoints = [];
+    syncShellModeControls();
+    renderParts();
+    scheduleWorkspaceRender();
+  };
   const syncIdleReadout = () => {
     q<HTMLSpanElement>('breathingAmountValue').textContent = idleSettings.breathingAmount.toFixed(2);
     q<HTMLSpanElement>('headSwayValue').textContent = idleSettings.headSway.toFixed(2);
     q<HTMLSpanElement>('armDriftValue').textContent = idleSettings.armDrift.toFixed(2);
     q<HTMLSpanElement>('overallIntensityValue').textContent = idleSettings.overallIntensity.toFixed(2);
     q<HTMLButtonElement>('wholeIdleMode').classList.toggle('active', animationMode === 'whole-sprite-idle');
-    ['modeMask','modeRig','modeAnimate','modeExport'].forEach((id, index) => q<HTMLButtonElement>(id).classList.toggle('active', ['mask','rig','animate','export'][index] === shellMode));
-    q<HTMLDivElement>('maskControls').hidden = shellMode !== 'mask'; q<HTMLDivElement>('rigControls').hidden = shellMode !== 'rig'; q<HTMLDivElement>('animateControls').hidden = shellMode !== 'animate'; q<HTMLDivElement>('exportControls').hidden = shellMode !== 'export';
     q<HTMLButtonElement>('partIdleMode').classList.toggle('active', animationMode === 'part-based-idle');
   };
 
-  q<HTMLButtonElement>('modeMask').addEventListener('click', () => { shellMode = 'mask'; renderParts(); });
-  q<HTMLButtonElement>('modeRig').addEventListener('click', () => { shellMode = 'rig'; renderParts(); });
-  q<HTMLButtonElement>('modeAnimate').addEventListener('click', () => { shellMode = 'animate'; renderParts(); });
-  q<HTMLButtonElement>('modeExport').addEventListener('click', () => { shellMode = 'export'; renderParts(); });
+  q<HTMLButtonElement>('modeMask').addEventListener('pointerup', () => setShellMode('mask'));
+  q<HTMLButtonElement>('modeRig').addEventListener('pointerup', () => setShellMode('rig'));
+  q<HTMLButtonElement>('modeAnimate').addEventListener('pointerup', () => setShellMode('animate'));
+  q<HTMLButtonElement>('modeExport').addEventListener('pointerup', () => setShellMode('export'));
   q<HTMLButtonElement>('generateButtonExport').addEventListener('click', () => q<HTMLButtonElement>('generateButton').click());
   q<HTMLButtonElement>('wholeIdleMode').addEventListener('click', () => { animationMode = 'whole-sprite-idle'; markStale(); syncIdleReadout(); });
   q<HTMLButtonElement>('partIdleMode').addEventListener('click', () => { animationMode = 'part-based-idle'; markStale(); syncIdleReadout(); });
@@ -466,7 +489,7 @@ export function initApp(root: HTMLDivElement) {
   workspace.addEventListener('pointerup', finish); workspace.addEventListener('pointercancel', finish);
 
   q<HTMLButtonElement>('saveProject').addEventListener('click', () => { if (!state.analysis || !sourceImageDataUrl) return; const project: ProjectSaveData = { sourceImageDataUrl, sourceImageWidth: state.analysis.width, sourceImageHeight: state.analysis.height, sourceBounds: state.analysis.sourceBounds, floorY: state.analysis.floorY, parts: parts.map((p) => ({ name: p.name, visible: p.visible, color: p.color, maskDataUrl: p.maskCanvas?.toDataURL('image/png') ?? null })), pivots: Object.fromEntries(parts.map((p) => [p.name, pivots.get(p.name)])), floorContacts: Object.fromEntries(parts.map((p) => [p.name, floorContacts.get(p.name)])), transforms: Object.fromEntries(parts.map((p) => [p.name, getTransform(p.name)])), layerOrder: parts.map((p) => p.name), exportSettings: { frameCount: state.frameCount, cellWidth: state.cellWidth, cellHeight: state.cellHeight, selectedPresetLabel, recommendedPresetLabel, recommendedCellWidth, recommendedCellHeight }, animationMode, idleSettings: { ...idleSettings } }; downloadBlob('sprite-rig-project.json', new Blob([JSON.stringify(project, null, 2)], { type: 'application/json' })); q<HTMLSpanElement>('savedStat').textContent = 'Saved'; });
-  q<HTMLInputElement>('loadProject').addEventListener('change', async (e) => { const file = (e.target as HTMLInputElement).files?.[0]; if (!file) return; const parsed = JSON.parse(await file.text()) as ProjectSaveData; sourceImageDataUrl = parsed.sourceImageDataUrl; image = await loadPngFromFile(new File([await (await fetch(parsed.sourceImageDataUrl)).blob()], 'project.png', { type: 'image/png' })); const c = document.createElement('canvas'); c.width = image.width; c.height = image.height; c.getContext('2d')!.drawImage(image, 0, 0); state.analysis = analyzeAlpha(c.getContext('2d')!.getImageData(0,0,c.width,c.height)); for (const part of parts) { part.maskCanvas = document.createElement('canvas'); part.maskCanvas.width = state.analysis.width; part.maskCanvas.height = state.analysis.height; } for (const saved of parsed.parts) { const p = parts.find((x) => x.name === saved.name); if (!p) continue; p.visible = saved.visible; if (saved.maskDataUrl && p.maskCanvas) { const m = await loadPngFromFile(new File([await (await fetch(saved.maskDataUrl)).blob()], 'mask.png', { type: 'image/png' })); p.maskCanvas.getContext('2d')!.drawImage(m, 0, 0); } markPartDirty(p.name); } pivots.clear(); floorContacts.clear(); partTransforms.clear(); for (const part of parts) { const pv = parsed.pivots?.[part.name]; const fc = parsed.floorContacts?.[part.name]; const tf = parsed.transforms?.[part.name]; if (pv) pivots.set(part.name, pv); if (fc) floorContacts.set(part.name, fc); if (tf) partTransforms.set(part.name, tf); } animationMode = parsed.animationMode ?? 'whole-sprite-idle'; idleSettings = { ...defaultIdleSettings, ...parsed.idleSettings }; q<HTMLInputElement>('breathingAmount').value = String(idleSettings.breathingAmount); q<HTMLInputElement>('headSway').value = String(idleSettings.headSway); q<HTMLInputElement>('armDrift').value = String(idleSettings.armDrift); q<HTMLInputElement>('overallIntensity').value = String(idleSettings.overallIntensity); syncIdleReadout(); renderParts(); scheduleWorkspaceRender(); setStatus('Loaded project JSON.'); q<HTMLSpanElement>('fileStat').textContent = `File: ${file.name}`; q<HTMLSpanElement>('dimensionsStat').textContent = `Dimensions: ${image.width}×${image.height}`; q<HTMLSpanElement>('savedStat').textContent = 'Loaded'; });
+  q<HTMLInputElement>('loadProject').addEventListener('change', async (e) => { const file = (e.target as HTMLInputElement).files?.[0]; if (!file) return; const parsed = JSON.parse(await file.text()) as ProjectSaveData; sourceImageDataUrl = parsed.sourceImageDataUrl; image = await loadPngFromFile(new File([await (await fetch(parsed.sourceImageDataUrl)).blob()], 'project.png', { type: 'image/png' })); const c = document.createElement('canvas'); c.width = image.width; c.height = image.height; c.getContext('2d')!.drawImage(image, 0, 0); state.analysis = analyzeAlpha(c.getContext('2d')!.getImageData(0,0,c.width,c.height)); for (const part of parts) { part.maskCanvas = document.createElement('canvas'); part.maskCanvas.width = state.analysis.width; part.maskCanvas.height = state.analysis.height; } for (const saved of parsed.parts) { const p = parts.find((x) => x.name === saved.name); if (!p) continue; p.visible = saved.visible; if (saved.maskDataUrl && p.maskCanvas) { const m = await loadPngFromFile(new File([await (await fetch(saved.maskDataUrl)).blob()], 'mask.png', { type: 'image/png' })); p.maskCanvas.getContext('2d')!.drawImage(m, 0, 0); } markPartDirty(p.name); } pivots.clear(); floorContacts.clear(); partTransforms.clear(); for (const part of parts) { const pv = parsed.pivots?.[part.name]; const fc = parsed.floorContacts?.[part.name]; const tf = parsed.transforms?.[part.name]; if (pv) pivots.set(part.name, pv); if (fc) floorContacts.set(part.name, fc); if (tf) partTransforms.set(part.name, tf); } animationMode = parsed.animationMode ?? 'whole-sprite-idle'; idleSettings = { ...defaultIdleSettings, ...parsed.idleSettings }; q<HTMLInputElement>('breathingAmount').value = String(idleSettings.breathingAmount); q<HTMLInputElement>('headSway').value = String(idleSettings.headSway); q<HTMLInputElement>('armDrift').value = String(idleSettings.armDrift); q<HTMLInputElement>('overallIntensity').value = String(idleSettings.overallIntensity); syncIdleReadout(); syncShellModeControls(); renderParts(); scheduleWorkspaceRender(); setStatus('Loaded project JSON.'); q<HTMLSpanElement>('fileStat').textContent = `File: ${file.name}`; q<HTMLSpanElement>('dimensionsStat').textContent = `Dimensions: ${image.width}×${image.height}`; q<HTMLSpanElement>('savedStat').textContent = 'Loaded'; });
 
 
   q<HTMLInputElement>('rotationDeg').addEventListener('input', (e) => { const t = getTransform(activePart); t.rotationDeg = Number((e.target as HTMLInputElement).value); renderParts(); });
@@ -479,5 +502,5 @@ export function initApp(root: HTMLDivElement) {
   q<HTMLButtonElement>('resetPartTransform').addEventListener('click', () => { partTransforms.set(activePart, { rotationDeg: 0, translateX: 0, translateY: 0, scaleX: 1, scaleY: 1 }); renderParts(); });
   q<HTMLButtonElement>('resetAllTransforms').addEventListener('click', () => { for (const part of parts) partTransforms.set(part.name, { rotationDeg: 0, translateX: 0, translateY: 0, scaleX: 1, scaleY: 1 }); renderParts(); });
 
-  syncIdleReadout(); renderParts(); scheduleWorkspaceRender(); startPreviewLoop(); selfCheck();
+  syncIdleReadout(); syncShellModeControls(); renderParts(); scheduleWorkspaceRender(); startPreviewLoop(); selfCheck();
 }
