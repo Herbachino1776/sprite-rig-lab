@@ -4,41 +4,34 @@ html, body { margin:0; overscroll-behavior: contain; }
 #app { max-width: 1200px; margin: 0 auto; padding: 10px; }
 .shell { display:flex; flex-direction:column; gap:10px; }
 .panel { background:#181d26; border:1px solid #2a3342; border-radius:12px; padding:10px; }
-.topBar { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
+.topBar { display:flex; flex-direction:column; gap:10px; }
+.projectButtons { display:grid; grid-template-columns:1fr; gap:8px; }
 h1 { margin:0 0 4px; font-size:20px; }
 .status { margin:0; color:#9fd7ff; font-size:13px; }
 .status.error { color:#ff8f8f; }
 .workspaceArea { padding:8px; touch-action:none; }
 canvas { width:100%; background: repeating-conic-gradient(#1f2632 0% 25%, #171d28 0% 50%) 50% / 20px 20px; border:1px solid #2a3342; border-radius:12px; }
-.toolDock { position: sticky; bottom: 0; z-index: 20; background:#141a24f2; border:1px solid #2a3342; border-radius:12px 12px 0 0; padding:8px; display:flex; flex-direction:column; gap:8px; }
+.modeTabs { display:flex; gap:8px; overflow-x:auto; }
+.modeControls { background:#141a24; display:flex; flex-direction:column; gap:8px; }
 .partChips { display:flex; gap:8px; overflow-x:auto; padding-bottom:2px; }
-.partChip { min-height:48px; min-width:160px; width:auto; display:flex; gap:8px; align-items:center; justify-content:space-between; }
+.partChip { min-height:44px; min-width:152px; width:auto; display:flex; gap:8px; align-items:center; justify-content:space-between; }
 .partChip.active { outline:2px solid #9fd7ff; }
-.segmented { display:flex; gap:8px; overflow-x:auto; padding-bottom:2px; }
-.segmented button { white-space:nowrap; min-width:120px; }
+.segmented { display:flex; gap:8px; overflow-x:auto; }
+.segmented button, .modeTabs button { white-space:nowrap; min-width:120px; }
 .partInfo { font-size:12px; color:#b8d3ea; background:#111722; border:1px solid #2a3342; border-radius:8px; padding:8px; min-height:44px; display:flex; align-items:center; }
-.transformPanel { border:1px solid #2a3342; border-radius:10px; background:#111722; padding:8px; display:flex; flex-direction:column; gap:8px; }
-.autoRigPanel { border:1px solid #2a3342; border-radius:10px; background:#111722; padding:8px; display:flex; flex-direction:column; gap:8px; }
-.inlineToggle { display:flex; flex-direction:row; align-items:center; gap:8px; font-size:12px; }
-.inlineToggle input { min-height:auto; width:18px; height:18px; padding:0; }
-.nudgeRow button { min-width:48px; flex:1; font-size:18px; }
-.row { display:flex; gap:8px; }
-button, input, select, .fileLabel { min-height:48px; border-radius:10px; border:1px solid #2a3342; background:#0f131b; color:#e8ecf2; padding:10px; }
+.transformPanel, .autoRigPanel { border:1px solid #2a3342; border-radius:10px; background:#111722; padding:8px; display:flex; flex-direction:column; gap:8px; }
+.inlineToggle { display:flex; align-items:center; gap:8px; font-size:12px; }
+.row { display:flex; gap:8px; flex-wrap:wrap; }
+button, input, select, .fileLabel { min-height:44px; border-radius:10px; border:1px solid #2a3342; background:#0f131b; color:#e8ecf2; padding:10px; }
 button { cursor:pointer; }
 button.active, button.primary { background:#28435a; border-color:#9fd7ff; }
-button:disabled { opacity:.5; cursor:not-allowed; }
 label { font-size:13px; display:flex; flex-direction:column; gap:4px; flex:1; }
 .compactSlider label { flex-direction:row; justify-content:space-between; align-items:center; }
-.stack details { margin-top:8px; }
-summary { cursor:pointer; font-weight:600; padding:6px 0; }
 pre { white-space:pre-wrap; font-size:12px; background:#111722; padding:8px; border-radius:8px; border:1px solid #2a3342; }
 .presetRow { display:flex; flex-wrap:wrap; gap:8px; margin:8px 0; }
 .fileLabel input { display:none; }
 .shellError { margin-top:8px; padding:8px; border:1px solid #ff6b6b; background:#4c1f1f; color:#ffdada; border-radius:8px; }
 @media (min-width: 960px) {
-  .shell { display:grid; grid-template-columns: minmax(0,2fr) minmax(320px,1fr); grid-template-areas: 'head head' 'work side' 'dock side'; }
-  .topBar { grid-area:head; }
-  .workspaceArea { grid-area:work; }
-  .toolDock { grid-area:dock; position:sticky; }
-  .stack { grid-area:side; align-self:start; position:sticky; top:10px; }
+  .topBar { flex-direction:row; justify-content:space-between; align-items:flex-start; }
+  .projectButtons { grid-template-columns: repeat(3, minmax(150px, 1fr)); }
 }
