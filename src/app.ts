@@ -108,6 +108,8 @@ export function initApp(root: HTMLDivElement) {
         <pre id="renderReport">No strip generated yet.</pre>
         <h3>Source analysis</h3>
         <pre id="meta">No sprite loaded yet.</pre>
+        <h3>Source quality</h3>
+        <pre id="sourceQuality">No sprite loaded yet.</pre>
         <p class="warn" id="warnings"></p>
       </section>
       <section class="panel">
@@ -123,6 +125,7 @@ export function initApp(root: HTMLDivElement) {
   const meta = root.querySelector<HTMLPreElement>('#meta')!;
   const renderReport = root.querySelector<HTMLPreElement>('#renderReport')!;
   const warnings = root.querySelector<HTMLParagraphElement>('#warnings')!;
+  const sourceQuality = root.querySelector<HTMLPreElement>('#sourceQuality')!;
   const status = root.querySelector<HTMLParagraphElement>('#status')!;
   const generateButton = root.querySelector<HTMLButtonElement>('#generate')!;
   const pngButton = root.querySelector<HTMLButtonElement>('#png')!;
@@ -278,6 +281,7 @@ export function initApp(root: HTMLDivElement) {
       setStatus(`Loading ${file.name}...`);
       warnings.textContent = '';
       meta.textContent = 'Analyzing source PNG...';
+      sourceQuality.textContent = 'Analyzing source quality...';
       resetStripState();
 
       image = await loadPngFromFile(file);
@@ -287,6 +291,7 @@ export function initApp(root: HTMLDivElement) {
       c.getContext('2d')!.drawImage(image, 0, 0);
       state.analysis = analyzeAlpha(c.getContext('2d')!.getImageData(0, 0, c.width, c.height));
       meta.textContent = JSON.stringify(state.analysis, null, 2);
+      sourceQuality.textContent = JSON.stringify(state.analysis.sourceQuality, null, 2);
       const initialPlan = createRenderPlan(state.analysis, state.cellWidth, state.cellHeight, state.frameCount);
       const shouldRecommendProductionPreset = state.analysis.sourceBounds.height > 1024 || initialPlan.renderScale < 0.75;
       if (shouldRecommendProductionPreset) {
@@ -311,6 +316,7 @@ export function initApp(root: HTMLDivElement) {
       clearCanvas(workspace);
       clearCanvas(preview);
       meta.textContent = 'Upload failed.';
+      sourceQuality.textContent = 'Upload failed.';
       renderReport.textContent = 'No strip generated yet.';
       warnings.textContent = error instanceof Error ? error.message : String(error);
       setStatus('Upload failed. See warning text below.', true);
@@ -393,6 +399,7 @@ export function initApp(root: HTMLDivElement) {
       recommendedPresetLabel,
       recommendedCellWidth,
       recommendedCellHeight,
+      sourceQuality: state.analysis.sourceQuality,
     };
     downloadBlob('sprite-strip.json', new Blob([JSON.stringify(metadata, null, 2)], { type: 'application/json' }));
   });

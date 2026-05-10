@@ -19,3 +19,19 @@ Current export sizing behavior:
   - recommendedPresetLabel
   - recommendedCellWidth
   - recommendedCellHeight
+
+Source quality diagnostics added before strip generation:
+- Source Quality panel reports pass/warn/fail checks for:
+  - transparent PNG verification
+  - source image dimensions
+  - alpha bounds
+  - alpha-bound edge contact (left/right/top/bottom)
+  - corner artifact pixels
+  - likely full-canvas background/pad
+  - non-transparent bounds occupancy percentage
+  - recrop recommendation before animation
+- Warnings are emitted when:
+  - alpha bounds touch any image edge
+  - source bounds area is more than 90% of image area
+  - corner pixels are non-transparent
+- Metadata JSON now includes `sourceQuality` diagnostics.
