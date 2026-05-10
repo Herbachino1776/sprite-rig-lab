@@ -16,12 +16,14 @@ type RenderPlan = {
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 const exportSizePresets = [
-  { width: 1024, height: 1024 },
-  { width: 1024, height: 1536 },
-  { width: 1024, height: 1600 },
-  { width: 1536, height: 1536 },
-  { width: 2048, height: 2048 },
+  { width: 1024, height: 1024, label: '1024x1024 Compact' },
+  { width: 1024, height: 1536, label: '1024x1536 Tall' },
+  { width: 1536, height: 1536, label: '1536x1536 Large' },
+  { width: 2048, height: 2048, label: '2048x2048 Production' },
 ] as const;
+const preferredProductionPresetLabel = '2048x2048 Production';
+const findPresetLabel = (width: number, height: number): string =>
+  exportSizePresets.find((preset) => preset.width === width && preset.height === height)?.label ?? `Custom ${width}x${height}`;
 
 function createRenderPlan(analysis: SpriteAnalysis, cellWidth: number, cellHeight: number, frameCount: number): RenderPlan {
   const bounds = analysis.sourceBounds;
@@ -74,6 +76,10 @@ export function initApp(root: HTMLDivElement) {
   let image: HTMLImageElement | null = null;
   let stripCanvas: HTMLCanvasElement | null = null;
   let lastRenderPlan: RenderPlan | null = null;
+  let selectedPresetLabel = findPresetLabel(state.cellWidth, state.cellHeight);
+  let recommendedPresetLabel = preferredProductionPresetLabel;
+  let recommendedCellWidth = 2048;
+  let recommendedCellHeight = 2048;
   let previewAnimationId: number | null = null;
   let previewTimeoutId: number | null = null;
 
@@ -92,7 +98,7 @@ export function initApp(root: HTMLDivElement) {
         <label>Export size presets</label>
         <div class="presetRow" id="exportPresets">
           ${exportSizePresets
-            .map((preset) => `<button type="button" data-preset="${preset.width}x${preset.height}">${preset.width}x${preset.height}</button>`)
+            .map((preset) => `<button type="button" data-preset="${preset.width}x${preset.height}" data-preset-label="${preset.label}">${preset.label}</button>`)
             .join('')}
         </div>
         <button id="generate" disabled>Generate strip</button>
@@ -281,6 +287,18 @@ export function initApp(root: HTMLDivElement) {
       c.getContext('2d')!.drawImage(image, 0, 0);
       state.analysis = analyzeAlpha(c.getContext('2d')!.getImageData(0, 0, c.width, c.height));
       meta.textContent = JSON.stringify(state.analysis, null, 2);
+      const initialPlan = createRenderPlan(state.analysis, state.cellWidth, state.cellHeight, state.frameCount);
+      const shouldRecommendProductionPreset = state.analysis.sourceBounds.height > 1024 || initialPlan.renderScale < 0.75;
+      if (shouldRecommendProductionPreset) {
+        recommendedPresetLabel = preferredProductionPresetLabel;
+        recommendedCellWidth = 2048;
+        recommendedCellHeight = 2048;
+      } else {
+        recommendedPresetLabel = selectedPresetLabel;
+        recommendedCellWidth = state.cellWidth;
+        recommendedCellHeight = state.cellHeight;
+      }
+      meta.textContent += `\nRecommended preset: ${recommendedPresetLabel} (${recommendedCellWidth}x${recommendedCellHeight})`;
       warnings.textContent = state.analysis.warnings.join(' | ');
       generateButton.disabled = false;
       renderWorkspace();
@@ -307,11 +325,13 @@ export function initApp(root: HTMLDivElement) {
 
   cellWidthInput.addEventListener('input', (e) => {
     state.cellWidth = Number((e.target as HTMLInputElement).value);
+    selectedPresetLabel = findPresetLabel(state.cellWidth, state.cellHeight);
     resetStripState();
   });
 
   cellHeightInput.addEventListener('input', (e) => {
     state.cellHeight = Number((e.target as HTMLInputElement).value);
+    selectedPresetLabel = findPresetLabel(state.cellWidth, state.cellHeight);
     resetStripState();
   });
 
@@ -326,6 +346,8 @@ export function initApp(root: HTMLDivElement) {
 
     state.cellWidth = width;
     state.cellHeight = height;
+    selectedPresetLabel = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-preset]')?.dataset.presetLabel
+      ?? findPresetLabel(width, height);
     cellWidthInput.value = String(width);
     cellHeightInput.value = String(height);
     resetStripState();
@@ -367,6 +389,10 @@ export function initApp(root: HTMLDivElement) {
       sourceFloorY: state.analysis.floorY,
       bleedRisk: lastRenderPlan.bleedRisk,
       warnings: [...state.analysis.warnings, ...lastRenderPlan.warnings],
+      selectedPresetLabel,
+      recommendedPresetLabel,
+      recommendedCellWidth,
+      recommendedCellHeight,
     };
     downloadBlob('sprite-strip.json', new Blob([JSON.stringify(metadata, null, 2)], { type: 'application/json' }));
   });
