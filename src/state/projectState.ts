@@ -36,6 +36,13 @@ export type ProjectSaveData = {
     recommendedCellWidth: number;
     recommendedCellHeight: number;
   };
+  animationMode?: 'whole-sprite-idle' | 'part-based-idle';
+  idleSettings?: {
+    breathingAmount: number;
+    headSway: number;
+    armDrift: number;
+    overallIntensity: number;
+  };
 };
 
 export const defaultState: ProjectState = { frameCount: 6, cellWidth: 1024, cellHeight: 1024, analysis: null };
