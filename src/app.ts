@@ -11,9 +11,10 @@ type OverlayCache = { canvas: HTMLCanvasElement | null; dirty: boolean; lastColo
 type AnimationMode = 'whole-sprite-idle' | 'part-based-idle' | 'part-based-small-walk';
 type IdleSettings = { breathingAmount: number; headSway: number; armDrift: number; overallIntensity: number };
 type AlphaBounds = { minX: number; minY: number; maxX: number; maxY: number; width: number; height: number };
+type MotionEnvelope = AlphaBounds & { frameHits: number };
 type FrameBoundsReport = { frameIndex: number; alphaBounds: AlphaBounds | null; centerOffsetXBeforeCorrection: number; finalLeftMargin: number; finalRightMargin: number };
 type WalkSettings = { walkIntensity: number; strideWidth: number; legCrossing: number; hipSway: number; armSwing: number; footLockStrength: number };
-type ExportMeta = { animationMode: AnimationMode; partBasedIdle: boolean; idleSettings: IdleSettings; walkSettings: WalkSettings; frameCount: number; cellWidth: number; cellHeight: number; stripWidth: number; stripHeight: number; floorY: number; renderScale: number; selectedPresetLabel: string; warnings: string[]; bleedRisk: boolean; frameBounds: FrameBoundsReport[] };
+type ExportMeta = { animationMode: AnimationMode; partBasedIdle: boolean; idleSettings: IdleSettings; walkSettings: WalkSettings; frameCount: number; cellWidth: number; cellHeight: number; stripWidth: number; stripHeight: number; floorY: number; renderScale: number; selectedPresetLabel: string; warnings: string[]; bleedRisk: boolean; frameBounds: FrameBoundsReport[]; motionEnvelope: MotionEnvelope | null; motionSafeScale: number; clippingPrevented: boolean; recommendedCellWidth: number; recommendedCellHeight: number; leftMarginMin: number; rightMarginMin: number; topMarginMin: number; bottomMarginMin: number; };
 type PreviewMode = 'idle-strip' | 'part-layer' | 'composite-parts';
 type ShellMode = 'mask' | 'rig' | 'animate' | 'export';
 type MaskStats = { bounds: { minX: number; maxX: number; minY: number; maxY: number; width: number; height: number }; area: number; centroid: Point; bottomCenter: Point; touchesFloor: boolean; warnings: string[] };
@@ -24,6 +25,7 @@ const exportSizePresets = [
   { width: 1024, height: 1536, label: '1024x1536 Tall' },
   { width: 1536, height: 1536, label: '1536x1536 Large' },
   { width: 2048, height: 2048, label: '2048x2048 Production' },
+  { width: 3072, height: 3072, label: '3072x3072 Boss / Wide Motion' },
 ] as const;
 const preferredProductionPresetLabel = '2048x2048 Production';
 const partColors = ['#ef476f', '#ffd166', '#06d6a0', '#118ab2', '#c77dff', '#f94144', '#f3722c', '#90be6d', '#577590'];
@@ -145,6 +147,10 @@ export function initApp(root: HTMLDivElement) {
   };
 
   const ensureMaskCanvases = () => { if (!state.analysis) return; for (const p of parts) { if (!p.maskCanvas) { p.maskCanvas = document.createElement('canvas'); p.maskCanvas.width = state.analysis.width; p.maskCanvas.height = state.analysis.height; } if (!overlayCache.has(p.name)) overlayCache.set(p.name, { canvas: null, dirty: true, lastColor: p.color, lastOpacity: overlayOpacity }); } };
+  const refreshSaveProjectEnabled = () => {
+    const canSave = !!(sourceImageDataUrl && state.analysis);
+    q<HTMLButtonElement>('saveProject').disabled = !canSave;
+  };
   const markPartDirty = (name: string) => { const e = overlayCache.get(name); if (e) e.dirty = true; markStale(); };
   const hasMaskPixels = (canvas: HTMLCanvasElement) => { const data = canvas.getContext('2d')!.getImageData(0,0,canvas.width,canvas.height).data; for (let i=3;i<data.length;i+=4) if (data[i]>0) return true; return false; };
   const clampPoint = (p: Point): Point => {
@@ -349,54 +355,62 @@ export function initApp(root: HTMLDivElement) {
     const frameCanvas = document.createElement('canvas'); frameCanvas.width = state.cellWidth; frameCanvas.height = state.cellHeight;
     const frameCtx = frameCanvas.getContext('2d')!;
     const frameBounds: FrameBoundsReport[] = [];
+    const safePaddingXPercent = 0.08;
+    const safePaddingYPercent = 0.06;
     const marginWarnThreshold = state.cellWidth * 0.05;
     const compileWarnings = [...plan.warnings];
-    for (let i = 0; i < state.frameCount; i++) {
+    const drawFrame = (frameIndex: number, renderScale: number) => {
       frameCtx.clearRect(0, 0, state.cellWidth, state.cellHeight);
-      const t = idleTransform(i, state.frameCount);
+      const t = idleTransform(frameIndex, state.frameCount);
       if (animationMode === 'whole-sprite-idle') {
-        const pivotX = state.analysis.sourceBounds.x + state.analysis.sourceBounds.width / 2;
-        frameCtx.save(); frameCtx.translate(state.cellWidth / 2, plan.baseFloor + t.bobY * plan.renderScale); frameCtx.scale(plan.renderScale * t.scale, plan.renderScale * t.scale); frameCtx.drawImage(image, -pivotX, -state.analysis.floorY); frameCtx.restore();
-      } else {
-        const intensity = idleSettings.overallIntensity;
-        const phase = (i / state.frameCount) * Math.PI * 2;
-        const walkPhase = (i / state.frameCount) * Math.PI * 2;
-        const sortedParts = parts.slice();
-        for (const part of sortedParts) {
-          if (!part.visible) continue;
-          const layer = extractedPartLayers.get(part.name);
-          if (!layer) continue;
-          const partPivot = pivots.get(part.name) ?? { x: layer.width / 2, y: layer.height / 2 };
-          const role = part.name;
-          let bobY = 0; let rot = 0; let sx = 1; let sy = 1; let driftX = 0;
-          if (animationMode === 'part-based-small-walk') {
-            const walkI = walkSettings.walkIntensity;
-            const stride = walkSettings.strideWidth;
-            const swing = walkSettings.armSwing;
-            const crossing = walkSettings.legCrossing;
-            const hip = walkSettings.hipSway;
-            const lock = walkSettings.footLockStrength;
-            const legPhase = role === 'rear_leg' ? walkPhase + Math.PI : walkPhase;
-            const armPhase = role === 'front_arm' ? walkPhase + Math.PI : role === 'rear_arm' ? walkPhase : walkPhase + 0.4;
-            if (role === 'torso') { driftX = Math.sin(walkPhase) * 1.8 * hip * walkI; bobY = Math.cos(walkPhase * 2) * 1.4 * walkI; rot = Math.sin(walkPhase) * 1.2 * hip * walkI; }
-            else if (role === 'head' || role === 'horns') { driftX = Math.sin(walkPhase - 0.35) * 1.1 * hip * walkI; bobY = Math.cos(walkPhase * 2 - 0.35) * 0.9 * walkI; rot = Math.sin(walkPhase - 0.6) * 0.8 * walkI; }
-            else if (role === 'front_leg' || role === 'rear_leg') { rot = Math.sin(legPhase) * (8 + 8 * stride) * walkI; driftX = Math.sin(legPhase) * (1.5 + 2.2 * stride) * (1 - crossing * 0.7) * walkI; bobY = Math.max(0, Math.cos(legPhase)) * 1.4 * (1 - lock) * walkI; }
-            else if (role === 'front_arm' || role === 'rear_arm') { rot = Math.sin(armPhase) * (6 + 10 * swing) * walkI; driftX = Math.sin(armPhase) * 1.2 * swing * walkI; }
-            else if (role === 'tail' || role === 'extra_01') { rot = Math.sin(walkPhase - 0.7) * 2.2 * walkI; bobY = Math.sin(walkPhase - 0.5) * 0.8 * walkI; }
-          } else if (role === 'torso') { const b = 0.01 * idleSettings.breathingAmount * intensity; sx += Math.sin(phase) * b; sy += Math.sin(phase) * b * 0.7; }
-          else if (role === 'head' || role === 'horns') { bobY = Math.sin(phase + 0.5) * 2.5 * idleSettings.headSway * intensity; driftX = Math.sin(phase) * 1.6 * idleSettings.headSway * intensity; rot = Math.sin(phase + 1) * 1.5 * idleSettings.headSway * intensity; }
-          else if (role === 'front_arm' || role === 'rear_arm' || role === 'tail' || role === 'extra_01') { bobY = Math.sin(phase + 0.8) * 1.6 * idleSettings.armDrift * intensity; driftX = Math.sin(phase + 0.4) * 1.2 * idleSettings.armDrift * intensity; rot = Math.sin(phase + 0.2) * 1.8 * idleSettings.armDrift * intensity; }
-          else if (role === 'front_leg' || role === 'rear_leg') { bobY = Math.sin(phase) * 0.35 * intensity; rot = Math.sin(phase + 0.4) * 0.4 * intensity; }
-          frameCtx.save();
-          frameCtx.translate(state.cellWidth / 2, plan.baseFloor);
-          frameCtx.scale(plan.renderScale, plan.renderScale);
-          frameCtx.translate(partPivot.x + driftX, partPivot.y + bobY - state.analysis.floorY);
-          frameCtx.rotate((rot * Math.PI) / 180);
-          frameCtx.scale(sx, sy);
-          frameCtx.drawImage(layer, -partPivot.x, -partPivot.y);
-          frameCtx.restore();
-        }
+        const pivotX = state.analysis!.sourceBounds.x + state.analysis!.sourceBounds.width / 2;
+        frameCtx.save(); frameCtx.translate(state.cellWidth / 2, plan.baseFloor + t.bobY * renderScale); frameCtx.scale(renderScale * t.scale, renderScale * t.scale); frameCtx.drawImage(image!, -pivotX, -state.analysis!.floorY); frameCtx.restore();
+        return;
       }
+      const intensity = idleSettings.overallIntensity;
+      const phase = (frameIndex / state.frameCount) * Math.PI * 2;
+      const walkPhase = (frameIndex / state.frameCount) * Math.PI * 2;
+      for (const part of parts.slice()) {
+        if (!part.visible) continue;
+        const layer = extractedPartLayers.get(part.name);
+        if (!layer) continue;
+        const partPivot = pivots.get(part.name) ?? { x: layer.width / 2, y: layer.height / 2 };
+        const role = part.name;
+        let bobY = 0; let rot = 0; let sx = 1; let sy = 1; let driftX = 0;
+        if (animationMode === 'part-based-small-walk') {
+          const walkI = walkSettings.walkIntensity; const stride = walkSettings.strideWidth; const swing = walkSettings.armSwing; const crossing = walkSettings.legCrossing; const hip = walkSettings.hipSway; const lock = walkSettings.footLockStrength;
+          const legPhase = role === 'rear_leg' ? walkPhase + Math.PI : walkPhase;
+          const armPhase = role === 'front_arm' ? walkPhase + Math.PI : role === 'rear_arm' ? walkPhase : walkPhase + 0.4;
+          if (role === 'torso') { driftX = Math.sin(walkPhase) * 1.8 * hip * walkI; bobY = Math.cos(walkPhase * 2) * 1.4 * walkI; rot = Math.sin(walkPhase) * 1.2 * hip * walkI; }
+          else if (role === 'head' || role === 'horns') { driftX = Math.sin(walkPhase - 0.35) * 1.1 * hip * walkI; bobY = Math.cos(walkPhase * 2 - 0.35) * 0.9 * walkI; rot = Math.sin(walkPhase - 0.6) * 0.8 * walkI; }
+          else if (role === 'front_leg' || role === 'rear_leg') { rot = Math.sin(legPhase) * (8 + 8 * stride) * walkI; driftX = Math.sin(legPhase) * (1.5 + 2.2 * stride) * (1 - crossing * 0.7) * walkI; bobY = Math.max(0, Math.cos(legPhase)) * 1.4 * (1 - lock) * walkI; }
+          else if (role === 'front_arm' || role === 'rear_arm') { rot = Math.sin(armPhase) * (6 + 10 * swing) * walkI; driftX = Math.sin(armPhase) * 1.2 * swing * walkI; }
+          else if (role === 'tail' || role === 'extra_01') { rot = Math.sin(walkPhase - 0.7) * 2.2 * walkI; bobY = Math.sin(walkPhase - 0.5) * 0.8 * walkI; }
+        } else if (role === 'torso') { const b = 0.01 * idleSettings.breathingAmount * intensity; sx += Math.sin(phase) * b; sy += Math.sin(phase) * b * 0.7; }
+        else if (role === 'head' || role === 'horns') { bobY = Math.sin(phase + 0.5) * 2.5 * idleSettings.headSway * intensity; driftX = Math.sin(phase) * 1.6 * idleSettings.headSway * intensity; rot = Math.sin(phase + 1) * 1.5 * idleSettings.headSway * intensity; }
+        else if (role === 'front_arm' || role === 'rear_arm' || role === 'tail' || role === 'extra_01') { bobY = Math.sin(phase + 0.8) * 1.6 * idleSettings.armDrift * intensity; driftX = Math.sin(phase + 0.4) * 1.2 * idleSettings.armDrift * intensity; rot = Math.sin(phase + 0.2) * 1.8 * idleSettings.armDrift * intensity; }
+        else if (role === 'front_leg' || role === 'rear_leg') { bobY = Math.sin(phase) * 0.35 * intensity; rot = Math.sin(phase + 0.4) * 0.4 * intensity; }
+        frameCtx.save(); frameCtx.translate(state.cellWidth / 2, plan.baseFloor); frameCtx.scale(renderScale, renderScale); frameCtx.translate(partPivot.x + driftX, partPivot.y + bobY - state.analysis!.floorY); frameCtx.rotate((rot * Math.PI) / 180); frameCtx.scale(sx, sy); frameCtx.drawImage(layer, -partPivot.x, -partPivot.y); frameCtx.restore();
+      }
+    };
+    let envelope: MotionEnvelope | null = null;
+    for (let i = 0; i < state.frameCount; i++) {
+      drawFrame(i, plan.renderScale);
+      const b = findAlphaBounds(frameCanvas);
+      if (!b) continue;
+      envelope = envelope ? { minX: Math.min(envelope.minX, b.minX), minY: Math.min(envelope.minY, b.minY), maxX: Math.max(envelope.maxX, b.maxX), maxY: Math.max(envelope.maxY, b.maxY), width: 0, height: 0, frameHits: envelope.frameHits + 1 } : { ...b, frameHits: 1 };
+    }
+    if (envelope) { envelope.width = envelope.maxX - envelope.minX + 1; envelope.height = envelope.maxY - envelope.minY + 1; }
+    const safeAreaWidth = state.cellWidth * (1 - safePaddingXPercent * 2);
+    const safeAreaHeight = state.cellHeight * (1 - safePaddingYPercent * 2);
+    const fitScale = envelope ? Math.min(1, safeAreaWidth / Math.max(1, envelope.width), safeAreaHeight / Math.max(1, envelope.height)) : 1;
+    const motionSafeScale = Number(fitScale.toFixed(4));
+    const clippingPrevented = motionSafeScale < 0.999;
+    if (clippingPrevented) compileWarnings.push(`Motion-safe fit applied: ${(motionSafeScale * 100).toFixed(1)}%.`);
+    if (motionSafeScale < 0.85) compileWarnings.push('Motion requires heavy downscaling. Use a larger cell to preserve detail.');
+    const finalRenderScale = plan.renderScale * motionSafeScale;
+    for (let i = 0; i < state.frameCount; i++) {
+      drawFrame(i, finalRenderScale);
       const bounds = findAlphaBounds(frameCanvas);
       let shiftX = 0;
       let shiftY = 0;
@@ -419,7 +433,9 @@ export function initApp(root: HTMLDivElement) {
       frameBounds.push({ frameIndex: i, alphaBounds: bounds, centerOffsetXBeforeCorrection: Number(centerOffsetXBeforeCorrection.toFixed(3)), finalLeftMargin: Number(finalLeftMargin.toFixed(3)), finalRightMargin: Number(finalRightMargin.toFixed(3)) });
     }
     stripCanvas = canvas; lastRenderPlan = plan; stalePreview = false;
-    exportMeta = { animationMode, partBasedIdle: animationMode === 'part-based-idle', idleSettings: { ...idleSettings }, walkSettings: { ...walkSettings }, frameCount: state.frameCount, cellWidth: state.cellWidth, cellHeight: state.cellHeight, stripWidth: canvas.width, stripHeight: canvas.height, floorY: plan.baseFloor, renderScale: Number(plan.renderScale.toFixed(4)), selectedPresetLabel, warnings: compileWarnings, bleedRisk: plan.bleedRisk, frameBounds };
+    const recommendedCellWidth = envelope ? Math.ceil((envelope.width / Math.max(0.1, 1 - safePaddingXPercent * 2)) / 64) * 64 : state.cellWidth;
+    const recommendedCellHeight = envelope ? Math.ceil((envelope.height / Math.max(0.1, 1 - safePaddingYPercent * 2)) / 64) * 64 : state.cellHeight;
+    exportMeta = { animationMode, partBasedIdle: animationMode === 'part-based-idle', idleSettings: { ...idleSettings }, walkSettings: { ...walkSettings }, frameCount: state.frameCount, cellWidth: state.cellWidth, cellHeight: state.cellHeight, stripWidth: canvas.width, stripHeight: canvas.height, floorY: plan.baseFloor, renderScale: Number(finalRenderScale.toFixed(4)), selectedPresetLabel, warnings: compileWarnings, bleedRisk: plan.bleedRisk, frameBounds, motionEnvelope: envelope, motionSafeScale, clippingPrevented, recommendedCellWidth, recommendedCellHeight, leftMarginMin: Math.min(...frameBounds.map((r) => r.finalLeftMargin)), rightMarginMin: Math.min(...frameBounds.map((r) => r.finalRightMargin)), topMarginMin: envelope ? envelope.minY : 0, bottomMarginMin: envelope ? state.cellHeight - 1 - envelope.maxY : 0 };
     renderReport.textContent = JSON.stringify(exportMeta, null, 2);
     setStatus(`Generated strip ${canvas.width}x${canvas.height}`);
   };
@@ -431,7 +447,7 @@ export function initApp(root: HTMLDivElement) {
     previewRaf = requestAnimationFrame(tick);
   };
 
-  q<HTMLInputElement>('file').addEventListener('change', async (e) => { const file = (e.target as HTMLInputElement).files?.[0]; if (!file) return; image = await loadPngFromFile(file); sourceImageDataUrl = await new Promise((resolve, reject) => { const fr = new FileReader(); fr.onload = () => resolve(String(fr.result)); fr.onerror = () => reject(fr.error); fr.readAsDataURL(file); }); const c = document.createElement('canvas'); c.width = image.width; c.height = image.height; c.getContext('2d')!.drawImage(image,0,0); state.analysis = analyzeAlpha(c.getContext('2d')!.getImageData(0,0,c.width,c.height)); sourceQuality.textContent = `Source: ${state.analysis.width}x${state.analysis.height}\nFloorY: ${state.analysis.floorY}`; ensureMaskCanvases(); renderParts(); scheduleWorkspaceRender(); markStale(); setStatus(`Loaded ${file.name}`); q<HTMLSpanElement>('fileStat').textContent = `File: ${file.name}`; q<HTMLSpanElement>('dimensionsStat').textContent = `Dimensions: ${image.width}×${image.height}`; q<HTMLSpanElement>('savedStat').textContent = 'Loaded'; q<HTMLButtonElement>('saveProject').disabled = false; });
+  q<HTMLInputElement>('file').addEventListener('change', async (e) => { const file = (e.target as HTMLInputElement).files?.[0]; if (!file) return; image = await loadPngFromFile(file); sourceImageDataUrl = await new Promise((resolve, reject) => { const fr = new FileReader(); fr.onload = () => resolve(String(fr.result)); fr.onerror = () => reject(fr.error); fr.readAsDataURL(file); }); const c = document.createElement('canvas'); c.width = image.width; c.height = image.height; c.getContext('2d')!.drawImage(image,0,0); state.analysis = analyzeAlpha(c.getContext('2d')!.getImageData(0,0,c.width,c.height)); sourceQuality.textContent = `Source: ${state.analysis.width}x${state.analysis.height}\nFloorY: ${state.analysis.floorY}`; ensureMaskCanvases(); renderParts(); scheduleWorkspaceRender(); markStale(); setStatus(`Loaded ${file.name}`); q<HTMLSpanElement>('fileStat').textContent = `File: ${file.name}`; q<HTMLSpanElement>('dimensionsStat').textContent = `Dimensions: ${image.width}×${image.height}`; q<HTMLSpanElement>('savedStat').textContent = 'Loaded'; refreshSaveProjectEnabled(); });
 
   generateButton.addEventListener('click', compileStrip);
   const syncShellModeControls = () => {
@@ -518,8 +534,8 @@ export function initApp(root: HTMLDivElement) {
   workspace.addEventListener('pointermove', (evt) => { const p = sourcePointFromEvent(evt); if (!p) return; if (isPainting && activePointerId === evt.pointerId && lastPaintPoint) { evt.preventDefault(); if (toolMode.startsWith('brush-')) { paint(lastPaintPoint,p); lastPaintPoint = p; } else lassoPoints.push(p); } scheduleWorkspaceRender(); });
   workspace.addEventListener('pointerup', finish); workspace.addEventListener('pointercancel', finish);
 
-  q<HTMLButtonElement>('saveProject').addEventListener('click', () => { if (!state.analysis || !sourceImageDataUrl) return; const project: ProjectSaveData = { sourceImageDataUrl, sourceImageWidth: state.analysis.width, sourceImageHeight: state.analysis.height, sourceBounds: state.analysis.sourceBounds, floorY: state.analysis.floorY, parts: parts.map((p) => ({ name: p.name, visible: p.visible, color: p.color, maskDataUrl: p.maskCanvas?.toDataURL('image/png') ?? null })), pivots: Object.fromEntries(parts.map((p) => [p.name, pivots.get(p.name)])), floorContacts: Object.fromEntries(parts.map((p) => [p.name, floorContacts.get(p.name)])), transforms: Object.fromEntries(parts.map((p) => [p.name, getTransform(p.name)])), layerOrder: parts.map((p) => p.name), exportSettings: { frameCount: state.frameCount, cellWidth: state.cellWidth, cellHeight: state.cellHeight, selectedPresetLabel, recommendedPresetLabel, recommendedCellWidth, recommendedCellHeight }, animationMode, idleSettings: { ...idleSettings }, walkSettings: { ...walkSettings } }; downloadBlob('sprite-rig-project.json', new Blob([JSON.stringify(project, null, 2)], { type: 'application/json' })); q<HTMLSpanElement>('savedStat').textContent = 'Saved'; });
-  q<HTMLInputElement>('loadProject').addEventListener('change', async (e) => { const file = (e.target as HTMLInputElement).files?.[0]; if (!file) return; const parsed = JSON.parse(await file.text()) as ProjectSaveData; sourceImageDataUrl = parsed.sourceImageDataUrl; image = await loadPngFromFile(new File([await (await fetch(parsed.sourceImageDataUrl)).blob()], 'project.png', { type: 'image/png' })); const c = document.createElement('canvas'); c.width = image.width; c.height = image.height; c.getContext('2d')!.drawImage(image, 0, 0); state.analysis = analyzeAlpha(c.getContext('2d')!.getImageData(0,0,c.width,c.height)); for (const part of parts) { part.maskCanvas = document.createElement('canvas'); part.maskCanvas.width = state.analysis.width; part.maskCanvas.height = state.analysis.height; } for (const saved of parsed.parts) { const p = parts.find((x) => x.name === saved.name); if (!p) continue; p.visible = saved.visible; if (saved.maskDataUrl && p.maskCanvas) { const m = await loadPngFromFile(new File([await (await fetch(saved.maskDataUrl)).blob()], 'mask.png', { type: 'image/png' })); p.maskCanvas.getContext('2d')!.drawImage(m, 0, 0); } markPartDirty(p.name); } pivots.clear(); floorContacts.clear(); partTransforms.clear(); for (const part of parts) { const pv = parsed.pivots?.[part.name]; const fc = parsed.floorContacts?.[part.name]; const tf = parsed.transforms?.[part.name]; if (pv) pivots.set(part.name, pv); if (fc) floorContacts.set(part.name, fc); if (tf) partTransforms.set(part.name, tf); } animationMode = parsed.animationMode ?? 'whole-sprite-idle'; idleSettings = { ...defaultIdleSettings, ...parsed.idleSettings }; walkSettings = { ...defaultWalkSettings, ...parsed.walkSettings }; q<HTMLInputElement>('breathingAmount').value = String(idleSettings.breathingAmount); q<HTMLInputElement>('headSway').value = String(idleSettings.headSway); q<HTMLInputElement>('armDrift').value = String(idleSettings.armDrift); q<HTMLInputElement>('overallIntensity').value = String(idleSettings.overallIntensity); q<HTMLInputElement>('walkIntensity').value = String(walkSettings.walkIntensity); q<HTMLInputElement>('strideWidth').value = String(walkSettings.strideWidth); q<HTMLInputElement>('legCrossing').value = String(walkSettings.legCrossing); q<HTMLInputElement>('hipSway').value = String(walkSettings.hipSway); q<HTMLInputElement>('armSwing').value = String(walkSettings.armSwing); q<HTMLInputElement>('footLockStrength').value = String(walkSettings.footLockStrength); syncIdleReadout(); syncShellModeControls(); renderParts(); scheduleWorkspaceRender(); setStatus('Loaded project JSON.'); q<HTMLSpanElement>('fileStat').textContent = `File: ${file.name}`; q<HTMLSpanElement>('dimensionsStat').textContent = `Dimensions: ${image.width}×${image.height}`; q<HTMLSpanElement>('savedStat').textContent = 'Loaded'; });
+  q<HTMLButtonElement>('saveProject').addEventListener('click', () => { if (!state.analysis || !sourceImageDataUrl) { setStatus('Load or upload a sprite before saving project.', true); return; } const project: ProjectSaveData = { sourceImageDataUrl, sourceImageWidth: state.analysis.width, sourceImageHeight: state.analysis.height, sourceBounds: state.analysis.sourceBounds, floorY: state.analysis.floorY, parts: parts.map((p) => ({ name: p.name, visible: p.visible, color: p.color, maskDataUrl: p.maskCanvas?.toDataURL('image/png') ?? null })), pivots: Object.fromEntries(parts.map((p) => [p.name, pivots.get(p.name)])), floorContacts: Object.fromEntries(parts.map((p) => [p.name, floorContacts.get(p.name)])), transforms: Object.fromEntries(parts.map((p) => [p.name, getTransform(p.name)])), layerOrder: parts.map((p) => p.name), exportSettings: { frameCount: state.frameCount, cellWidth: state.cellWidth, cellHeight: state.cellHeight, selectedPresetLabel, recommendedPresetLabel, recommendedCellWidth, recommendedCellHeight, safePaddingXPercent: 0.08, safePaddingYPercent: 0.06 }, animationMode, idleSettings: { ...idleSettings }, walkSettings: { ...walkSettings }, activePart }; downloadBlob('sprite-rig-project.json', new Blob([JSON.stringify(project, null, 2)], { type: 'application/json' })); q<HTMLSpanElement>('savedStat').textContent = 'Saved'; setStatus('Project saved/downloaded.'); refreshSaveProjectEnabled(); });
+  q<HTMLInputElement>('loadProject').addEventListener('change', async (e) => { const file = (e.target as HTMLInputElement).files?.[0]; if (!file) return; const parsed = JSON.parse(await file.text()) as ProjectSaveData; sourceImageDataUrl = parsed.sourceImageDataUrl; image = await loadPngFromFile(new File([await (await fetch(parsed.sourceImageDataUrl)).blob()], 'project.png', { type: 'image/png' })); const c = document.createElement('canvas'); c.width = image.width; c.height = image.height; c.getContext('2d')!.drawImage(image, 0, 0); state.analysis = analyzeAlpha(c.getContext('2d')!.getImageData(0,0,c.width,c.height)); state.frameCount = parsed.exportSettings?.frameCount ?? state.frameCount; state.cellWidth = parsed.exportSettings?.cellWidth ?? state.cellWidth; state.cellHeight = parsed.exportSettings?.cellHeight ?? state.cellHeight; selectedPresetLabel = parsed.exportSettings?.selectedPresetLabel ?? findPresetLabel(state.cellWidth, state.cellHeight); recommendedPresetLabel = parsed.exportSettings?.recommendedPresetLabel ?? recommendedPresetLabel; recommendedCellWidth = parsed.exportSettings?.recommendedCellWidth ?? recommendedCellWidth; recommendedCellHeight = parsed.exportSettings?.recommendedCellHeight ?? recommendedCellHeight; activePart = parsed.activePart ?? activePart; q<HTMLSelectElement>('frameCount').value = String(state.frameCount); q<HTMLInputElement>('cellWidth').value = String(state.cellWidth); q<HTMLInputElement>('cellHeight').value = String(state.cellHeight); for (const part of parts) { part.maskCanvas = document.createElement('canvas'); part.maskCanvas.width = state.analysis.width; part.maskCanvas.height = state.analysis.height; } for (const saved of parsed.parts) { const p = parts.find((x) => x.name === saved.name); if (!p) continue; p.visible = saved.visible; if (saved.maskDataUrl && p.maskCanvas) { const m = await loadPngFromFile(new File([await (await fetch(saved.maskDataUrl)).blob()], 'mask.png', { type: 'image/png' })); p.maskCanvas.getContext('2d')!.drawImage(m, 0, 0); } markPartDirty(p.name); } pivots.clear(); floorContacts.clear(); partTransforms.clear(); for (const part of parts) { const pv = parsed.pivots?.[part.name]; const fc = parsed.floorContacts?.[part.name]; const tf = parsed.transforms?.[part.name]; if (pv) pivots.set(part.name, pv); if (fc) floorContacts.set(part.name, fc); if (tf) partTransforms.set(part.name, tf); } animationMode = parsed.animationMode ?? 'whole-sprite-idle'; idleSettings = { ...defaultIdleSettings, ...parsed.idleSettings }; walkSettings = { ...defaultWalkSettings, ...parsed.walkSettings }; q<HTMLInputElement>('breathingAmount').value = String(idleSettings.breathingAmount); q<HTMLInputElement>('headSway').value = String(idleSettings.headSway); q<HTMLInputElement>('armDrift').value = String(idleSettings.armDrift); q<HTMLInputElement>('overallIntensity').value = String(idleSettings.overallIntensity); q<HTMLInputElement>('walkIntensity').value = String(walkSettings.walkIntensity); q<HTMLInputElement>('strideWidth').value = String(walkSettings.strideWidth); q<HTMLInputElement>('legCrossing').value = String(walkSettings.legCrossing); q<HTMLInputElement>('hipSway').value = String(walkSettings.hipSway); q<HTMLInputElement>('armSwing').value = String(walkSettings.armSwing); q<HTMLInputElement>('footLockStrength').value = String(walkSettings.footLockStrength); syncIdleReadout(); syncShellModeControls(); renderParts(); scheduleWorkspaceRender(); setStatus('Loaded project JSON.'); q<HTMLSpanElement>('fileStat').textContent = `File: ${file.name}`; q<HTMLSpanElement>('dimensionsStat').textContent = `Dimensions: ${image.width}×${image.height}`; q<HTMLSpanElement>('savedStat').textContent = 'Loaded'; refreshSaveProjectEnabled(); });
 
 
   q<HTMLInputElement>('rotationDeg').addEventListener('input', (e) => { const t = getTransform(activePart); t.rotationDeg = Number((e.target as HTMLInputElement).value); renderParts(); });
@@ -532,5 +548,5 @@ export function initApp(root: HTMLDivElement) {
   q<HTMLButtonElement>('resetPartTransform').addEventListener('click', () => { partTransforms.set(activePart, { rotationDeg: 0, translateX: 0, translateY: 0, scaleX: 1, scaleY: 1 }); renderParts(); });
   q<HTMLButtonElement>('resetAllTransforms').addEventListener('click', () => { for (const part of parts) partTransforms.set(part.name, { rotationDeg: 0, translateX: 0, translateY: 0, scaleX: 1, scaleY: 1 }); renderParts(); });
 
-  syncIdleReadout(); syncShellModeControls(); renderParts(); scheduleWorkspaceRender(); startPreviewLoop(); selfCheck();
+  syncIdleReadout(); syncShellModeControls(); renderParts(); scheduleWorkspaceRender(); refreshSaveProjectEnabled(); startPreviewLoop(); selfCheck();
 }

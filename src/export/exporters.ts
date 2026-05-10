@@ -1,7 +1,13 @@
-export function downloadBlob(filename:string, blob:Blob) {
+export function downloadBlob(filename: string, blob: Blob) {
+  const objectUrl = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
+  a.href = objectUrl;
   a.download = filename;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(a.href);
+  requestAnimationFrame(() => {
+    a.remove();
+    URL.revokeObjectURL(objectUrl);
+  });
 }
