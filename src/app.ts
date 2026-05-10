@@ -10,6 +10,7 @@ type Point = { x: number; y: number };
 type OverlayCache = { canvas: HTMLCanvasElement | null; dirty: boolean; lastColor: string; lastOpacity: number };
 type ExportMeta = { frameCount: number; cellWidth: number; cellHeight: number; stripWidth: number; stripHeight: number; floorY: number; renderScale: number; selectedPreset: string; warnings: string[]; bleedRisk: boolean };
 type PreviewMode = 'idle-strip' | 'part-layer' | 'composite-parts';
+type MaskStats = { bounds: { minX: number; maxX: number; minY: number; maxY: number; width: number; height: number }; area: number; centroid: Point; bottomCenter: Point; touchesFloor: boolean; warnings: string[] };
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 const exportSizePresets = [
@@ -80,6 +81,7 @@ export function initApp(root: HTMLDivElement) {
   <section class="toolDock" id="mobileDock"><div class="partChips" id="partChips"></div>
   <div class="segmented toolModes"><button id="brushAddMode" type="button">Brush Add</button><button id="brushEraseMode" type="button">Brush Erase</button><button id="lassoAddMode" type="button">Lasso Add</button><button id="lassoEraseMode" type="button">Lasso Erase</button><button id="setPivotMode" type="button">Set Pivot</button><button id="setFloorMode" type="button">Set Floor Contact</button><button id="transformPartMode" type="button">Transform Part</button></div><div id="partInfo" class="partInfo"></div>
   <div class="transformPanel" id="transformPanel" hidden><div class="compactSlider"><label for="rotationDeg">Rotate <span id="rotationDegValue">0°</span></label><input id="rotationDeg" type="range" min="-180" max="180" step="1" value="0" /></div><div class="compactSlider"><label for="uniformScale">Scale <span id="uniformScaleValue">1.00</span></label><input id="uniformScale" type="range" min="0.25" max="2" step="0.01" value="1" /></div><div class="row nudgeRow"><button id="nudgeUp" type="button">↑</button><button id="nudgeLeft" type="button">←</button><button id="nudgeRight" type="button">→</button><button id="nudgeDown" type="button">↓</button></div><div class="row"><button id="resetPartTransform" type="button">Reset Part</button><button id="resetAllTransforms" type="button">Reset All</button></div></div>
+  <div class="autoRigPanel"><div class="row"><button id="autoPlacePivotsButton" class="primary" type="button">Auto-place pivots & floor contacts</button></div><label class="inlineToggle"><input id="overwritePivots" type="checkbox" />Overwrite existing pivots & floor contacts</label><div id="autoRigFeedback" class="partInfo">Auto rig hints are ready after masks (and optionally built part layers).</div></div>
   <div class="row"><button id="undoMaskAction" type="button" disabled>Undo</button><button id="cancelLasso" type="button" disabled>Cancel Lasso</button></div>
   <div class="compactSlider"><label for="brushSize">Brush <span id="brushSizeValue">24</span></label><input id="brushSize" type="range" min="1" max="256" value="24" /></div>
   <div class="compactSlider"><label for="overlayOpacity">Overlay <span id="overlayOpacityValue">45%</span></label><input id="overlayOpacity" type="range" min="0.05" max="1" step="0.05" value="0.45" /></div></section>
@@ -110,6 +112,120 @@ export function initApp(root: HTMLDivElement) {
   const ensureMaskCanvases = () => { if (!state.analysis) return; for (const p of parts) { if (!p.maskCanvas) { p.maskCanvas = document.createElement('canvas'); p.maskCanvas.width = state.analysis.width; p.maskCanvas.height = state.analysis.height; } if (!overlayCache.has(p.name)) overlayCache.set(p.name, { canvas: null, dirty: true, lastColor: p.color, lastOpacity: overlayOpacity }); } };
   const markPartDirty = (name: string) => { const e = overlayCache.get(name); if (e) e.dirty = true; markStale(); };
   const hasMaskPixels = (canvas: HTMLCanvasElement) => { const data = canvas.getContext('2d')!.getImageData(0,0,canvas.width,canvas.height).data; for (let i=3;i<data.length;i+=4) if (data[i]>0) return true; return false; };
+  const clampPoint = (p: Point): Point => {
+    if (!state.analysis) return p;
+    return { x: clamp(Math.round(p.x), 0, state.analysis.width - 1), y: clamp(Math.round(p.y), 0, state.analysis.height - 1) };
+  };
+  const computeMaskStats = (canvas: HTMLCanvasElement): MaskStats | null => {
+    const { width, height } = canvas;
+    const data = canvas.getContext('2d')!.getImageData(0, 0, width, height).data;
+    let minX = width;
+    let minY = height;
+    let maxX = -1;
+    let maxY = -1;
+    let area = 0;
+    let sumX = 0;
+    let sumY = 0;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const alpha = data[(y * width + x) * 4 + 3];
+        if (alpha === 0) continue;
+        area += 1;
+        sumX += x;
+        sumY += y;
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+    if (!area || maxX < minX || maxY < minY) return null;
+    const bottomY = maxY;
+    let bottomSumX = 0;
+    let bottomCount = 0;
+    for (let x = minX; x <= maxX; x++) {
+      const alpha = data[(bottomY * width + x) * 4 + 3];
+      if (alpha === 0) continue;
+      bottomSumX += x;
+      bottomCount += 1;
+    }
+    const bounds = { minX, minY, maxX, maxY, width: maxX - minX + 1, height: maxY - minY + 1 };
+    const centroid = { x: sumX / area, y: sumY / area };
+    const bottomCenter = { x: bottomCount ? bottomSumX / bottomCount : (minX + maxX) / 2, y: maxY };
+    const touchesFloor = !!state.analysis && maxY >= Math.floor(state.analysis.height * 0.85);
+    const warnings: string[] = [];
+    if (area < 24 || bounds.width < 4 || bounds.height < 4) warnings.push('tiny mask');
+    return { bounds, area, centroid, bottomCenter, touchesFloor, warnings };
+  };
+  const getAutoPivotForPart = (partName: string, stats: MaskStats, torsoStats: MaskStats | null): Point => {
+    const { bounds, centroid } = stats;
+    if (partName === 'front_leg' || partName === 'rear_leg') return { x: (bounds.minX + bounds.maxX) / 2, y: bounds.minY + bounds.height * 0.2 };
+    if (partName === 'front_arm' || partName === 'rear_arm') return { x: bounds.minX + bounds.width * 0.45, y: bounds.minY + bounds.height * 0.2 };
+    if (partName === 'head') return { x: (bounds.minX + bounds.maxX) / 2, y: bounds.maxY - bounds.height * 0.2 };
+    if (partName === 'torso') return { x: centroid.x, y: bounds.minY + bounds.height * 0.65 };
+    if (partName === 'horns') return { x: (bounds.minX + bounds.maxX) / 2, y: bounds.maxY - bounds.height * 0.1 };
+    if (partName === 'tail') {
+      if (torsoStats) {
+        const torsoCenterX = torsoStats.centroid.x;
+        const nearLeft = Math.abs(bounds.minX - torsoCenterX) <= Math.abs(bounds.maxX - torsoCenterX);
+        return { x: nearLeft ? bounds.minX + bounds.width * 0.15 : bounds.maxX - bounds.width * 0.15, y: centroid.y };
+      }
+      return { x: bounds.minX + bounds.width * 0.3, y: centroid.y };
+    }
+    return { x: centroid.x, y: centroid.y };
+  };
+  const runAutoRigHints = () => {
+    if (!state.analysis) {
+      setStatus('Load a PNG before auto-place.', true);
+      return;
+    }
+    ensureMaskCanvases();
+    if (!extractedPartLayers.size) {
+      setStatus('Build Part Layers first for best auto-place results.', true);
+      q<HTMLDivElement>('autoRigFeedback').textContent = 'Build Part Layers first, then run Auto-place pivots.';
+      return;
+    }
+    const overwrite = q<HTMLInputElement>('overwritePivots').checked;
+    const torsoMask = parts.find((part) => part.name === 'torso')?.maskCanvas ?? null;
+    const torsoStats = torsoMask ? computeMaskStats(torsoMask) : null;
+    let suggestedCount = 0;
+    let skippedCount = 0;
+    const messages: string[] = [];
+    for (const part of parts) {
+      if (!part.maskCanvas) continue;
+      const stats = computeMaskStats(part.maskCanvas);
+      if (!stats) {
+        skippedCount += 1;
+        messages.push(`${part.name}: no mask found`);
+        continue;
+      }
+      messages.push(...stats.warnings.map((w) => `${part.name}: ${w}`));
+      const hasExistingPivot = pivots.has(part.name);
+      const hasExistingFloor = floorContacts.has(part.name);
+      const pivot = clampPoint(getAutoPivotForPart(part.name, stats, torsoStats));
+      if (overwrite || !hasExistingPivot) {
+        pivots.set(part.name, pivot);
+        suggestedCount += 1;
+        messages.push(`${part.name}: pivot suggested`);
+      } else {
+        messages.push(`${part.name}: pivot kept`);
+      }
+      const shouldHaveFloorContact = part.name === 'front_leg' || part.name === 'rear_leg' || (part.name === 'extra_01' && stats.touchesFloor);
+      if (shouldHaveFloorContact) {
+        if (overwrite || !hasExistingFloor) {
+          floorContacts.set(part.name, clampPoint(stats.bottomCenter));
+          messages.push(`${part.name}: floor contact suggested`);
+        } else {
+          messages.push(`${part.name}: floor contact kept`);
+        }
+      }
+    }
+    q<HTMLDivElement>('autoRigFeedback').textContent = `Suggested pivots for ${suggestedCount} part(s). ${skippedCount} part(s) skipped. ${messages.slice(0, 4).join(' · ')}`;
+    setStatus(`Auto-place complete. Suggested pivots for ${suggestedCount} part(s).`);
+    renderParts();
+    scheduleWorkspaceRender();
+    markStale();
+  };
   const buildPartLayers = () => {
     if (!image || !state.analysis) return;
     ensureMaskCanvases();
@@ -215,6 +331,7 @@ export function initApp(root: HTMLDivElement) {
 
   generateButton.addEventListener('click', compileStrip);
   q<HTMLButtonElement>('buildPartLayersButton').addEventListener('click', () => { buildPartLayers(); });
+  q<HTMLButtonElement>('autoPlacePivotsButton').addEventListener('click', runAutoRigHints);
   q<HTMLButtonElement>('exportSelectedPartButton').addEventListener('click', () => { const selected = extractedPartLayers.get(selectedPartLayerName); if (!selected) return; selected.toBlob((blob) => blob && downloadBlob(`${selectedPartLayerName}.png`, blob)); });
   q<HTMLSelectElement>('previewMode').addEventListener('change', (e) => { previewMode = (e.target as HTMLSelectElement).value as PreviewMode; });
   pngButton.addEventListener('click', () => { if (!stripCanvas) return; stripCanvas.toBlob((blob) => blob && downloadBlob('sprite-strip.png', blob)); });
