@@ -14,7 +14,7 @@ type RenderPlan = {
   warnings: string[];
 };
 
-type BrushMode = 'paint' | 'erase';
+type ToolMode = 'brush-add' | 'brush-erase' | 'lasso-add' | 'lasso-erase';
 type Point = { x: number; y: number };
 type OverlayCache = { canvas: HTMLCanvasElement | null; dirty: boolean; lastColor: string; lastOpacity: number };
 
@@ -70,7 +70,7 @@ export function initApp(root: HTMLDivElement) {
   let recommendedCellWidth = 2048;
   let recommendedCellHeight = 2048;
   let activePart: string = defaultPartNames[0];
-  let brushMode: BrushMode = 'paint';
+  let toolMode: ToolMode = 'brush-add';
   // Brush size is interpreted in source-image pixels.
   let brushSize = 24;
   let overlayOpacity = 0.45;
@@ -79,6 +79,8 @@ export function initApp(root: HTMLDivElement) {
   let lastPaintPoint: Point | null = null;
   let hoverPoint: Point | null = null;
   let renderRaf: number | null = null;
+  let lassoPoints: Point[] = [];
+  let undoMaskAction: (() => void) | null = null;
 
   root.innerHTML = `
     <h1>Sprite Rig Lab</h1>
@@ -95,7 +97,11 @@ export function initApp(root: HTMLDivElement) {
         <h3>Workspace</h3><canvas id="workspace" width="1024" height="1024"></canvas>
         <div class="mobileDock" id="mobileDock">
           <div class="partChips" id="partChips"></div>
-          <div class="row segmented"><button id="paintMode" type="button">Paint</button><button id="eraseMode" type="button">Erase</button></div>
+          <div class="row segmented toolModes">
+            <button id="brushAddMode" type="button">Brush Add</button><button id="brushEraseMode" type="button">Brush Erase</button>
+            <button id="lassoAddMode" type="button">Lasso Add</button><button id="lassoEraseMode" type="button">Lasso Erase</button>
+          </div>
+          <div class="row"><button id="cancelLasso" type="button" disabled>Cancel Lasso</button><button id="undoMaskAction" type="button" disabled>Undo Last Mask Action</button></div>
           <div class="compactSlider"><label for="brushSize">Brush <span id="brushSizeValue">24</span></label><input id="brushSize" type="range" min="1" max="256" value="24" /></div>
           <div class="compactSlider"><label for="overlayOpacity">Overlay <span id="overlayOpacityValue">45%</span></label><input id="overlayOpacity" type="range" min="0.05" max="1" step="0.05" value="0.45" /></div>
         </div>
@@ -121,8 +127,12 @@ export function initApp(root: HTMLDivElement) {
   const partChips = root.querySelector<HTMLDivElement>('#partChips')!;
   const partUpButton = root.querySelector<HTMLButtonElement>('#partUp')!;
   const partDownButton = root.querySelector<HTMLButtonElement>('#partDown')!;
-  const paintModeButton = root.querySelector<HTMLButtonElement>('#paintMode')!;
-  const eraseModeButton = root.querySelector<HTMLButtonElement>('#eraseMode')!;
+  const brushAddModeButton = root.querySelector<HTMLButtonElement>('#brushAddMode')!;
+  const brushEraseModeButton = root.querySelector<HTMLButtonElement>('#brushEraseMode')!;
+  const lassoAddModeButton = root.querySelector<HTMLButtonElement>('#lassoAddMode')!;
+  const lassoEraseModeButton = root.querySelector<HTMLButtonElement>('#lassoEraseMode')!;
+  const cancelLassoButton = root.querySelector<HTMLButtonElement>('#cancelLasso')!;
+  const undoMaskActionButton = root.querySelector<HTMLButtonElement>('#undoMaskAction')!;
   const brushSizeValue = root.querySelector<HTMLSpanElement>('#brushSizeValue')!;
   const overlayOpacityValue = root.querySelector<HTMLSpanElement>('#overlayOpacityValue')!;
 
@@ -158,8 +168,12 @@ export function initApp(root: HTMLDivElement) {
 
   const renderPartsPanel = () => {
     partChips.innerHTML = parts.map((p) => `<button type="button" class="partChip ${p.name === activePart ? 'active' : ''}" data-part="${p.name}"><span class="swatch" style="background:${p.color}"></span><span class="partName">${p.name}</span><span class="eyeButton" data-toggle-vis="${p.name}" role="button" aria-label="${p.visible ? 'Hide' : 'Show'} ${p.name}">${p.visible ? '👁' : '🚫'}</span></button>`).join('');
-    paintModeButton.classList.toggle('active', brushMode === 'paint');
-    eraseModeButton.classList.toggle('active', brushMode === 'erase');
+    brushAddModeButton.classList.toggle('active', toolMode === 'brush-add');
+    brushEraseModeButton.classList.toggle('active', toolMode === 'brush-erase');
+    lassoAddModeButton.classList.toggle('active', toolMode === 'lasso-add');
+    lassoEraseModeButton.classList.toggle('active', toolMode === 'lasso-erase');
+    cancelLassoButton.disabled = lassoPoints.length === 0;
+    undoMaskActionButton.disabled = !undoMaskAction;
     brushSizeValue.textContent = String(brushSize);
     overlayOpacityValue.textContent = `${Math.round(overlayOpacity * 100)}%`;
   };
@@ -199,7 +213,7 @@ export function initApp(root: HTMLDivElement) {
       if (entry.dirty || entry.lastColor !== part.color || entry.lastOpacity !== overlayOpacity) rebuildOverlay(part, entry);
       if (entry.canvas) ctx.drawImage(entry.canvas, offsetX, offsetY, drawW, drawH);
     }
-    if (hoverPoint) {
+    if (toolMode.startsWith('brush-') && hoverPoint) {
       const brushRadiusOnWorkspace = brushSize * workspaceTransform.scale;
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 2;
@@ -207,13 +221,41 @@ export function initApp(root: HTMLDivElement) {
       ctx.arc(workspaceTransform.offsetX + hoverPoint.x * workspaceTransform.scale, workspaceTransform.offsetY + hoverPoint.y * workspaceTransform.scale, brushRadiusOnWorkspace, 0, Math.PI * 2);
       ctx.stroke();
     }
+    if (lassoPoints.length > 0) {
+      const active = parts.find((p) => p.name === activePart);
+      ctx.strokeStyle = active?.color ?? '#9fd7ff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      const first = lassoPoints[0]!;
+      ctx.moveTo(workspaceTransform.offsetX + first.x * workspaceTransform.scale, workspaceTransform.offsetY + first.y * workspaceTransform.scale);
+      for (let i = 1; i < lassoPoints.length; i++) {
+        const point = lassoPoints[i]!;
+        ctx.lineTo(workspaceTransform.offsetX + point.x * workspaceTransform.scale, workspaceTransform.offsetY + point.y * workspaceTransform.scale);
+      }
+      ctx.stroke();
+    }
   };
 
+  const snapshotPartMask = (part: MaskPart): ImageData | null => {
+    if (!part.maskCanvas) return null;
+    const ctx = part.maskCanvas.getContext('2d')!;
+    return ctx.getImageData(0, 0, part.maskCanvas.width, part.maskCanvas.height);
+  };
+  const restorePartMask = (part: MaskPart, imageData: ImageData) => {
+    if (!part.maskCanvas) return;
+    part.maskCanvas.getContext('2d')!.putImageData(imageData, 0, 0);
+    markPartDirty(part.name);
+    scheduleWorkspaceRender();
+  };
   const paintStroke = (from: Point, to: Point) => {
     const part = parts.find((p) => p.name === activePart);
     if (!part?.maskCanvas) return;
+    if (!undoMaskAction && lastPaintPoint === from) {
+      const before = snapshotPartMask(part);
+      if (before) undoMaskAction = () => restorePartMask(part, before);
+    }
     const ctx = part.maskCanvas.getContext('2d')!;
-    ctx.globalCompositeOperation = brushMode === 'paint' ? 'source-over' : 'destination-out';
+    ctx.globalCompositeOperation = toolMode === 'brush-add' ? 'source-over' : 'destination-out';
     ctx.fillStyle = '#ffffff';
     ctx.strokeStyle = '#ffffff';
     ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.lineWidth = brushSize * 2;
@@ -221,11 +263,30 @@ export function initApp(root: HTMLDivElement) {
     ctx.beginPath(); ctx.arc(to.x, to.y, brushSize, 0, Math.PI * 2); ctx.fill();
     markPartDirty(part.name);
   };
+  const commitLasso = () => {
+    const part = parts.find((p) => p.name === activePart);
+    if (!part?.maskCanvas || lassoPoints.length < 3) { lassoPoints = []; renderPartsPanel(); scheduleWorkspaceRender(); return; }
+    const before = snapshotPartMask(part);
+    const ctx = part.maskCanvas.getContext('2d')!;
+    ctx.globalCompositeOperation = toolMode === 'lasso-add' ? 'source-over' : 'destination-out';
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(lassoPoints[0]!.x, lassoPoints[0]!.y);
+    for (let i = 1; i < lassoPoints.length; i++) ctx.lineTo(lassoPoints[i]!.x, lassoPoints[i]!.y);
+    ctx.closePath();
+    ctx.fill();
+    if (before) undoMaskAction = () => restorePartMask(part, before);
+    lassoPoints = [];
+    markPartDirty(part.name);
+    renderPartsPanel();
+    scheduleWorkspaceRender();
+  };
 
   const finishPaint = (evt: PointerEvent) => {
     if (activePointerId !== evt.pointerId) return;
     evt.preventDefault();
     workspace.releasePointerCapture(evt.pointerId);
+    if (toolMode.startsWith('lasso-')) commitLasso();
     isPainting = false; activePointerId = null; lastPaintPoint = null;
   };
 
@@ -235,15 +296,22 @@ export function initApp(root: HTMLDivElement) {
     workspace.setPointerCapture(evt.pointerId);
     isPainting = true; activePointerId = evt.pointerId;
     const point = sourcePointFromEvent(evt); if (!point) return;
-    hoverPoint = point; lastPaintPoint = point; paintStroke(point, point); scheduleWorkspaceRender();
+    hoverPoint = point; lastPaintPoint = point;
+    if (toolMode.startsWith('brush-')) paintStroke(point, point);
+    if (toolMode.startsWith('lasso-')) lassoPoints = [point];
+    scheduleWorkspaceRender();
   });
   workspace.addEventListener('pointermove', (evt) => {
     const point = sourcePointFromEvent(evt); if (!point) return;
     hoverPoint = point;
     if (isPainting && activePointerId === evt.pointerId && lastPaintPoint) {
       evt.preventDefault();
-      paintStroke(lastPaintPoint, point);
-      lastPaintPoint = point;
+      if (toolMode.startsWith('brush-')) {
+        paintStroke(lastPaintPoint, point);
+        lastPaintPoint = point;
+      } else {
+        lassoPoints.push(point);
+      }
     }
     scheduleWorkspaceRender();
   });
@@ -273,8 +341,12 @@ export function initApp(root: HTMLDivElement) {
   });
   partUpButton.addEventListener('click', () => { const i = parts.findIndex((p) => p.name === activePart); if (i > 0) { [parts[i - 1], parts[i]] = [parts[i], parts[i - 1]]; renderPartsPanel(); scheduleWorkspaceRender(); } });
   partDownButton.addEventListener('click', () => { const i = parts.findIndex((p) => p.name === activePart); if (i >= 0 && i < parts.length - 1) { [parts[i + 1], parts[i]] = [parts[i], parts[i + 1]]; renderPartsPanel(); scheduleWorkspaceRender(); } });
-  paintModeButton.addEventListener('click', () => { brushMode = 'paint'; renderPartsPanel(); });
-  eraseModeButton.addEventListener('click', () => { brushMode = 'erase'; renderPartsPanel(); });
+  brushAddModeButton.addEventListener('click', () => { toolMode = 'brush-add'; renderPartsPanel(); scheduleWorkspaceRender(); });
+  brushEraseModeButton.addEventListener('click', () => { toolMode = 'brush-erase'; renderPartsPanel(); scheduleWorkspaceRender(); });
+  lassoAddModeButton.addEventListener('click', () => { toolMode = 'lasso-add'; renderPartsPanel(); scheduleWorkspaceRender(); });
+  lassoEraseModeButton.addEventListener('click', () => { toolMode = 'lasso-erase'; renderPartsPanel(); scheduleWorkspaceRender(); });
+  cancelLassoButton.addEventListener('click', () => { lassoPoints = []; isPainting = false; activePointerId = null; lastPaintPoint = null; renderPartsPanel(); scheduleWorkspaceRender(); });
+  undoMaskActionButton.addEventListener('click', () => { if (!undoMaskAction) return; undoMaskAction(); undoMaskAction = null; renderPartsPanel(); });
   root.querySelector<HTMLInputElement>('#brushSize')!.addEventListener('input', (e) => { brushSize = Number((e.target as HTMLInputElement).value); renderPartsPanel(); scheduleWorkspaceRender(); });
   root.querySelector<HTMLInputElement>('#overlayOpacity')!.addEventListener('input', (e) => { overlayOpacity = Number((e.target as HTMLInputElement).value); for (const p of parts) markPartDirty(p.name); renderPartsPanel(); scheduleWorkspaceRender(); });
 

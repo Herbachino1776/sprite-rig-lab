@@ -22,7 +22,8 @@ pre { white-space: pre-wrap; font-size:12px; }
 .partChip.active { outline:2px solid #9fd7ff; }
 .partName { white-space: nowrap; }
 .eyeButton { min-width:30px; text-align:center; font-size:16px; }
-.segmented button { margin-top:0; }
+.segmented { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.segmented button { margin-top:0; min-height:44px; padding:8px 6px; font-size:13px; }
 .segmented button.active { background:#28435a; border-color:#9fd7ff; }
 .compactSlider label { display:flex; justify-content:space-between; align-items:center; margin:2px 0; }
 .compactSlider input { margin:0; }
