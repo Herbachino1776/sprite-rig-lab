@@ -35,7 +35,10 @@ export type ProjectSaveData = {
     recommendedPresetLabel: string;
     recommendedCellWidth: number;
     recommendedCellHeight: number;
+    safePaddingXPercent?: number;
+    safePaddingYPercent?: number;
   };
+  activePart?: string;
   animationMode?: 'whole-sprite-idle' | 'part-based-idle' | 'part-based-small-walk';
   idleSettings?: {
     breathingAmount: number;
