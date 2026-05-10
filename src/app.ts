@@ -118,9 +118,8 @@ export function initApp(root: HTMLDivElement) {
       const scaledBoundsW = bounds.width * tr.scale;
       const scaledBoundsH = bounds.height * tr.scale;
       const frameCenterX = i * cellWidth + cellWidth / 2;
-      const sourceFloorOffset = state.analysis.floorY - bounds.y;
       const x = frameCenterX - scaledBoundsW / 2 - bounds.x * tr.scale;
-      const y = baseFloor - sourceFloorOffset * tr.scale - bounds.y * tr.scale + tr.bobY;
+      const y = baseFloor - state.analysis.floorY * tr.scale;
 
       ctx.drawImage(image, x, y, image.width * tr.scale, image.height * tr.scale);
 
