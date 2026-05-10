@@ -10,6 +10,8 @@ button:disabled { cursor:not-allowed; opacity:0.45; }
 canvas { width:100%; background: repeating-conic-gradient(#1f2632 0% 25%, #171d28 0% 50%) 50% / 20px 20px; border:1px solid #2a3342; border-radius:12px; }
 .row { display:flex; gap:8px; }
 .row > * { flex:1; }
+.presetRow { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:8px; }
+.presetRow button { width:auto; flex:0 0 auto; margin-top:0; padding:6px 10px; font-size:13px; }
 pre { white-space: pre-wrap; font-size:12px; }
 .warn { color:#ffd166; }
 .status { color:#9fd7ff; margin:8px 0; font-size: 13px; }
