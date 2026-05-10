@@ -36,12 +36,20 @@ export type ProjectSaveData = {
     recommendedCellWidth: number;
     recommendedCellHeight: number;
   };
-  animationMode?: 'whole-sprite-idle' | 'part-based-idle';
+  animationMode?: 'whole-sprite-idle' | 'part-based-idle' | 'part-based-small-walk';
   idleSettings?: {
     breathingAmount: number;
     headSway: number;
     armDrift: number;
     overallIntensity: number;
+  };
+  walkSettings?: {
+    walkIntensity: number;
+    strideWidth: number;
+    legCrossing: number;
+    hipSway: number;
+    armSwing: number;
+    footLockStrength: number;
   };
 };
 
