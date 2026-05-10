@@ -15,6 +15,13 @@ type RenderPlan = {
 };
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+const exportSizePresets = [
+  { width: 1024, height: 1024 },
+  { width: 1024, height: 1536 },
+  { width: 1024, height: 1600 },
+  { width: 1536, height: 1536 },
+  { width: 2048, height: 2048 },
+] as const;
 
 function createRenderPlan(analysis: SpriteAnalysis, cellWidth: number, cellHeight: number, frameCount: number): RenderPlan {
   const bounds = analysis.sourceBounds;
@@ -82,6 +89,12 @@ export function initApp(root: HTMLDivElement) {
           <div><label>Cell width</label><input id="cellW" type="number" min="16" value="1024" /></div>
           <div><label>Cell height</label><input id="cellH" type="number" min="16" value="1024" /></div>
         </div>
+        <label>Export size presets</label>
+        <div class="presetRow" id="exportPresets">
+          ${exportSizePresets
+            .map((preset) => `<button type="button" data-preset="${preset.width}x${preset.height}">${preset.width}x${preset.height}</button>`)
+            .join('')}
+        </div>
         <button id="generate" disabled>Generate strip</button>
         <button id="png" disabled>Export PNG strip</button>
         <button id="json" disabled>Export metadata JSON</button>
@@ -108,6 +121,8 @@ export function initApp(root: HTMLDivElement) {
   const generateButton = root.querySelector<HTMLButtonElement>('#generate')!;
   const pngButton = root.querySelector<HTMLButtonElement>('#png')!;
   const jsonButton = root.querySelector<HTMLButtonElement>('#json')!;
+  const cellWidthInput = root.querySelector<HTMLInputElement>('#cellW')!;
+  const cellHeightInput = root.querySelector<HTMLInputElement>('#cellH')!;
 
   const setStatus = (message: string, isError = false) => {
     status.textContent = message;
@@ -290,13 +305,29 @@ export function initApp(root: HTMLDivElement) {
     resetStripState();
   });
 
-  root.querySelector<HTMLInputElement>('#cellW')!.addEventListener('input', (e) => {
+  cellWidthInput.addEventListener('input', (e) => {
     state.cellWidth = Number((e.target as HTMLInputElement).value);
     resetStripState();
   });
 
-  root.querySelector<HTMLInputElement>('#cellH')!.addEventListener('input', (e) => {
+  cellHeightInput.addEventListener('input', (e) => {
     state.cellHeight = Number((e.target as HTMLInputElement).value);
+    resetStripState();
+  });
+
+  root.querySelector<HTMLDivElement>('#exportPresets')!.addEventListener('click', (e) => {
+    const preset = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-preset]')?.dataset.preset;
+    if (!preset) return;
+
+    const [widthText, heightText] = preset.split('x');
+    const width = Number(widthText);
+    const height = Number(heightText);
+    if (!Number.isFinite(width) || !Number.isFinite(height)) return;
+
+    state.cellWidth = width;
+    state.cellHeight = height;
+    cellWidthInput.value = String(width);
+    cellHeightInput.value = String(height);
     resetStripState();
   });
 
