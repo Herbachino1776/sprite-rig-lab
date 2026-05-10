@@ -35,3 +35,10 @@ Source quality diagnostics added before strip generation:
   - source bounds area is more than 90% of image area
   - corner pixels are non-transparent
 - Metadata JSON now includes `sourceQuality` diagnostics.
+
+
+Manual Mask Editor v1 added:
+- Default part set with independent visibility and layer order controls.
+- Paint/erase brush workflows over workspace sprite with adjustable brush size and overlay opacity.
+- Per-part masks are stored at source-image resolution and serialized in Save/Load Project JSON.
+- Save Project JSON now captures source dimensions, sourceBounds, floorY, parts, layer order, visibility, serialized masks, and export settings.

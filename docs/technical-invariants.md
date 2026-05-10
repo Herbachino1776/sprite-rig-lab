@@ -11,3 +11,6 @@
 - Source quality diagnostics must expose deterministic pass/warn/fail status for alpha verification, dimensions, bounds, edge-touch, corner artifacts, full-canvas pad risk, occupancy %, and recrop recommendation.
 - Source analysis warnings must include edge-touch (left/right/top/bottom), corner artifact, and occupancy >90% checks.
 - Metadata JSON must include `sourceQuality` diagnostics alongside existing analysis and export fields.
+
+- Manual mask data must be stored per part at source-image resolution and must survive Save/Load Project JSON round-trips.
+- Manual mask editor must expose deterministic default parts, visibility toggles, layer reorder, paint/erase brush modes, brush size, and overlay opacity without changing export floor-lock behavior.
