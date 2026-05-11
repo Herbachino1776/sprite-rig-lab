@@ -8,12 +8,13 @@ Current export sizing behavior:
   - 1024x1024 Compact
   - 1024x1536 Tall
   - 1536x1536 Large
-  - 2048x2048 Production
+  - 2048x2048 Compact/Legacy
+  - 3072x3072 Production (Recommended)
+  - 4096x4096 Extreme Motion
 - Clicking a preset updates cell dimensions immediately and resets generated strip/export state.
 - Source analysis now shows a visible “Recommended preset” line.
-- Recommendation logic promotes 2048x2048 Production when:
-  - source bounds height is greater than 1024, or
-  - computed render scale for current settings would be below 0.75.
+- Global default/recommended preset is 3072x3072 Production (Recommended) for whole-sprite idle, part-based idle, part-based walk, and part-based attack.
+- 2048x2048 Compact/Legacy and 4096x4096 Extreme Motion remain manual overrides.
 - Metadata JSON now includes selected and recommended preset details:
   - selectedPresetLabel
   - recommendedPresetLabel

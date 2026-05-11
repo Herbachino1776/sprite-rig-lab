@@ -75,4 +75,4 @@ export type ProjectSaveData = {
   };
 };
 
-export const defaultState: ProjectState = { frameCount: 6, cellWidth: 1024, cellHeight: 1024, analysis: null };
+export const defaultState: ProjectState = { frameCount: 6, cellWidth: 3072, cellHeight: 3072, analysis: null };
