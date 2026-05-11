@@ -39,7 +39,7 @@ export type ProjectSaveData = {
     safePaddingYPercent?: number;
   };
   activePart?: string;
-  animationMode?: 'whole-sprite-idle' | 'part-based-idle' | 'part-based-small-walk';
+  animationMode?: 'whole-sprite-idle' | 'part-based-idle' | 'part-based-small-walk' | 'part-based-attack';
   idleSettings?: {
     breathingAmount: number;
     headSway: number;
@@ -53,6 +53,13 @@ export type ProjectSaveData = {
     hipSway: number;
     armSwing: number;
     footLockStrength: number;
+  };
+  attackSettings?: {
+    attackIntensity: number;
+    attackReach: number;
+    torsoLean: number;
+    armSwing: number;
+    recoilAmount: number;
   };
 };
 
