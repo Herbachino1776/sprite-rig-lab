@@ -141,11 +141,22 @@ export function initApp(root: HTMLDivElement) {
     q<HTMLSpanElement>('modeStat').textContent = `Mode: ${shellMode[0]?.toUpperCase()}${shellMode.slice(1)}`;
     q<HTMLSpanElement>('zoomStat').textContent = `Zoom: ${Math.round(workspaceTransform.scale * 100)}%`;
   };
-  const markStale = () => { stalePreview = true; renderReport.dataset.stale = 'true'; };
+  const updateExportButtonState = () => {
+    const hasStrip = !!stripCanvas && !!exportMeta && !stalePreview;
+    pngButton.disabled = !hasStrip;
+    jsonButton.disabled = !hasStrip;
+  };
+  const markStale = () => {
+    stalePreview = true;
+    stripCanvas = null;
+    exportMeta = null;
+    renderReport.dataset.stale = 'true';
+    updateExportButtonState();
+  };
 
   const selfCheck = () => {
     const shellError = q<HTMLDivElement>('shellError');
-    const missing = ['file', 'loadProject', 'saveProject', 'workspace', 'modeMask', 'partChips', 'generateButton', 'pngButton', 'jsonButton', 'preview'].filter((id) => !root.querySelector(`#${id}`));
+    const missing = ['file', 'loadProject', 'saveProject', 'workspace', 'modeMask', 'partChips', 'generateButton', 'generateButtonExport', 'pngButton', 'jsonButton', 'preview', 'renderReport'].filter((id) => !root.querySelector(`#${id}`));
     if (missing.length) { shellError.hidden = false; shellError.textContent = `UI shell error: missing ${missing.join(', ')}`; console.error(shellError.textContent); }
   };
 
@@ -370,7 +381,7 @@ export function initApp(root: HTMLDivElement) {
     }
   };
 
-  const compileStrip = () => {
+  const generateStripAndPreview = () => {
     if (!image || !state.analysis) return;
     if ((animationMode === 'part-based-idle' || animationMode === 'part-based-small-walk') && !extractedPartLayers.size) { setStatus('Build Part Layers first.', true); return; }
     const plan = createRenderPlan(state.analysis, state.cellWidth, state.cellHeight, state.frameCount);
@@ -462,6 +473,8 @@ export function initApp(root: HTMLDivElement) {
     syncRecommendedPreset(false);
     exportMeta = { animationMode, partBasedIdle: animationMode === 'part-based-idle', idleSettings: { ...idleSettings }, walkSettings: { ...walkSettings }, frameCount: state.frameCount, cellWidth: state.cellWidth, cellHeight: state.cellHeight, stripWidth: canvas.width, stripHeight: canvas.height, floorY: plan.baseFloor, renderScale: Number(finalRenderScale.toFixed(4)), selectedPresetLabel, recommendedPresetLabel, warnings: compileWarnings, bleedRisk: plan.bleedRisk, frameBounds, motionEnvelope: envelope, motionSafeScale, clippingPrevented, recommendedCellWidth, recommendedCellHeight, leftMarginMin: Math.min(...frameBounds.map((r) => r.finalLeftMargin)), rightMarginMin: Math.min(...frameBounds.map((r) => r.finalRightMargin)), topMarginMin: envelope ? envelope.minY : 0, bottomMarginMin: envelope ? state.cellHeight - 1 - envelope.maxY : 0 };
     renderReport.textContent = JSON.stringify(exportMeta, null, 2);
+    renderReport.dataset.stale = 'false';
+    updateExportButtonState();
     setStatus(`Generated strip ${canvas.width}x${canvas.height}`);
   };
 
@@ -474,7 +487,7 @@ export function initApp(root: HTMLDivElement) {
 
   q<HTMLInputElement>('file').addEventListener('change', async (e) => { const file = (e.target as HTMLInputElement).files?.[0]; if (!file) return; image = await loadPngFromFile(file); sourceImageDataUrl = await new Promise((resolve, reject) => { const fr = new FileReader(); fr.onload = () => resolve(String(fr.result)); fr.onerror = () => reject(fr.error); fr.readAsDataURL(file); }); const c = document.createElement('canvas'); c.width = image.width; c.height = image.height; c.getContext('2d')!.drawImage(image,0,0); state.analysis = analyzeAlpha(c.getContext('2d')!.getImageData(0,0,c.width,c.height)); sourceQuality.textContent = `Source: ${state.analysis.width}x${state.analysis.height}\nFloorY: ${state.analysis.floorY}`; ensureMaskCanvases(); renderParts(); scheduleWorkspaceRender(); markStale(); setStatus(`Loaded ${file.name}`); q<HTMLSpanElement>('fileStat').textContent = `File: ${file.name}`; q<HTMLSpanElement>('dimensionsStat').textContent = `Dimensions: ${image.width}×${image.height}`; q<HTMLSpanElement>('savedStat').textContent = 'Loaded'; refreshSaveProjectEnabled(); });
 
-  generateButton.addEventListener('click', compileStrip);
+  generateButton.addEventListener('click', generateStripAndPreview);
   const syncShellModeControls = () => {
     ['modeMask', 'modeRig', 'modeAnimate', 'modeExport'].forEach((id, index) => q<HTMLButtonElement>(id).classList.toggle('active', ['mask', 'rig', 'animate', 'export'][index] === shellMode));
     q<HTMLDivElement>('maskControls').hidden = shellMode !== 'mask';
@@ -523,7 +536,7 @@ export function initApp(root: HTMLDivElement) {
   q<HTMLButtonElement>('modeRig').addEventListener('pointerup', () => setShellMode('rig'));
   q<HTMLButtonElement>('modeAnimate').addEventListener('pointerup', () => setShellMode('animate'));
   q<HTMLButtonElement>('modeExport').addEventListener('pointerup', () => setShellMode('export'));
-  q<HTMLButtonElement>('generateButtonExport').addEventListener('click', () => q<HTMLButtonElement>('generateButton').click());
+  q<HTMLButtonElement>('generateButtonExport').addEventListener('click', generateStripAndPreview);
   q<HTMLButtonElement>('wholeIdleMode').addEventListener('click', () => { animationMode = 'whole-sprite-idle'; syncRecommendedPreset(false); markStale(); syncIdleReadout(); });
   q<HTMLButtonElement>('partIdleMode').addEventListener('click', () => { animationMode = 'part-based-idle'; syncRecommendedPreset(false); markStale(); syncIdleReadout(); });
   q<HTMLButtonElement>('partWalkMode').addEventListener('click', () => { animationMode = 'part-based-small-walk'; syncRecommendedPreset(true); markStale(); syncIdleReadout(); });
@@ -538,8 +551,20 @@ export function initApp(root: HTMLDivElement) {
   q<HTMLButtonElement>('autoPlacePivotsButton').addEventListener('click', runAutoRigHints);
   q<HTMLButtonElement>('exportSelectedPartButton').addEventListener('click', () => { const selected = extractedPartLayers.get(selectedPartLayerName); if (!selected) return; selected.toBlob((blob) => blob && downloadBlob(`${selectedPartLayerName}.png`, blob)); });
   q<HTMLSelectElement>('previewMode').addEventListener('change', (e) => { previewMode = (e.target as HTMLSelectElement).value as PreviewMode; });
-  pngButton.addEventListener('click', () => { if (!stripCanvas) return; stripCanvas.toBlob((blob) => blob && downloadBlob('sprite-strip.png', blob)); });
-  jsonButton.addEventListener('click', () => { if (!exportMeta) return; downloadBlob('sprite-strip-metadata.json', new Blob([JSON.stringify(exportMeta, null, 2)], { type: 'application/json' })); });
+  pngButton.addEventListener('click', () => {
+    if (!stripCanvas || stalePreview) {
+      setStatus('Generate a strip before exporting.', true);
+      return;
+    }
+    stripCanvas.toBlob((blob) => blob && downloadBlob('sprite-strip.png', blob));
+  });
+  jsonButton.addEventListener('click', () => {
+    if (!exportMeta || stalePreview) {
+      setStatus('Generate a strip before exporting.', true);
+      return;
+    }
+    downloadBlob('sprite-strip-metadata.json', new Blob([JSON.stringify(exportMeta, null, 2)], { type: 'application/json' }));
+  });
 
   q<HTMLSelectElement>('frameCount').addEventListener('change', (e) => { state.frameCount = Number((e.target as HTMLSelectElement).value) as 5 | 6; markStale(); });
   q<HTMLInputElement>('cellWidth').addEventListener('input', (e) => { state.cellWidth = Number((e.target as HTMLInputElement).value); selectedPresetLabel = findPresetLabel(state.cellWidth, state.cellHeight); markStale(); });
@@ -574,5 +599,6 @@ export function initApp(root: HTMLDivElement) {
   q<HTMLButtonElement>('resetPartTransform').addEventListener('click', () => { partTransforms.set(activePart, { rotationDeg: 0, translateX: 0, translateY: 0, scaleX: 1, scaleY: 1 }); renderParts(); });
   q<HTMLButtonElement>('resetAllTransforms').addEventListener('click', () => { for (const part of parts) partTransforms.set(part.name, { rotationDeg: 0, translateX: 0, translateY: 0, scaleX: 1, scaleY: 1 }); renderParts(); });
 
+  updateExportButtonState();
   syncIdleReadout(); syncShellModeControls(); renderParts(); scheduleWorkspaceRender(); refreshSaveProjectEnabled(); startPreviewLoop(); selfCheck();
 }
