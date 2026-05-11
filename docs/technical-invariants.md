@@ -6,7 +6,7 @@
 - Metadata dimensions must match export dimensions.
 - Export size presets must set cell width/height deterministically and preserve floor-lock rendering behavior.
 - Source analysis must include a visible recommended preset line.
-- Recommended preset is 2048x2048 Production when sourceBounds.height > 1024 or when computed renderScale < 0.75 for current settings.
+- Recommended/default preset is 3072x3072 Production (Recommended) across idle, walk, and attack modes unless manually overridden.
 - Metadata JSON must include preset selection/recommendation fields alongside existing export geometry fields.
 - Source quality diagnostics must expose deterministic pass/warn/fail status for alpha verification, dimensions, bounds, edge-touch, corner artifacts, full-canvas pad risk, occupancy %, and recrop recommendation.
 - Source analysis warnings must include edge-touch (left/right/top/bottom), corner artifact, and occupancy >90% checks.
