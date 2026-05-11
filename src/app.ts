@@ -145,11 +145,31 @@ export function initApp(root: HTMLDivElement) {
   const parts: MaskPart[] = defaultPartNames.map((name, i) => ({ name, visible: true, color: partColors[i % partColors.length], maskCanvas: null }));
   const overlayCache = new Map<string, OverlayCache>();
   const defaultLayerOrder: string[] = [...defaultPartNames];
+  const legacyBadDefaultLayerOrder: string[] = ['rear_arm', 'rear_leg', 'torso', 'head', 'front_arm', 'front_leg', 'tail', 'extra_01', 'horns'];
+
+  const normalizeLayerOrder = (layerOrder: string[] | undefined): string[] => {
+    if (!layerOrder?.length) return [...defaultLayerOrder];
+    if (layerOrder.length === legacyBadDefaultLayerOrder.length && layerOrder.every((name, index) => name === legacyBadDefaultLayerOrder[index])) {
+      return [...defaultLayerOrder];
+    }
+    const deduped = layerOrder.filter((name, index) => layerOrder.indexOf(name) === index);
+    const ordered = deduped.filter((name) => defaultLayerOrder.includes(name));
+    for (const partName of defaultLayerOrder) {
+      if (!ordered.includes(partName)) ordered.push(partName);
+    }
+    return ordered;
+  };
+
+  const getCompositePartsInDrawOrder = (): MaskPart[] => {
+    const rank = new Map<string, number>();
+    defaultLayerOrder.forEach((name, index) => rank.set(name, index));
+    return [...parts].sort((a, b) => (rank.get(a.name) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b.name) ?? Number.MAX_SAFE_INTEGER));
+  };
 
   const applySavedLayerOrder = (layerOrder: string[] | undefined) => {
     const rank = new Map<string, number>();
-    const order = layerOrder?.length ? layerOrder : defaultLayerOrder;
-    order.forEach((name, index) => rank.set(name, index));
+    const normalizedOrder = normalizeLayerOrder(layerOrder);
+    normalizedOrder.forEach((name, index) => rank.set(name, index));
     parts.sort((a, b) => {
       const aRank = rank.get(a.name) ?? Number.MAX_SAFE_INTEGER;
       const bRank = rank.get(b.name) ?? Number.MAX_SAFE_INTEGER;
@@ -378,7 +398,7 @@ export function initApp(root: HTMLDivElement) {
     const pivot = pivots.get(activePart);
     const floor = floorContacts.get(activePart);
     const transform = getTransform(activePart);
-    const layerReadout = parts.map((part) => part.name).join(' → ');
+    const layerReadout = getCompositePartsInDrawOrder().map((part) => part.name).join(' → ');
     q<HTMLDivElement>('partInfo').innerHTML = `<strong>${activePart}</strong> · pivot: ${pivot ? `${pivot.x},${pivot.y}` : '—'} · floor: ${floor ? `${floor.x},${floor.y}` : '—'} · rot ${transform.rotationDeg.toFixed(0)}°<br/><small>Layer order: ${layerReadout}</small>`;
     updateStatusRow();
     const panel = q<HTMLDivElement>('transformPanel');
@@ -486,7 +506,7 @@ export function initApp(root: HTMLDivElement) {
       const intensity = idleSettings.overallIntensity;
       const phase = (frameIndex / state.frameCount) * Math.PI * 2;
       const walkPhase = (frameIndex / state.frameCount) * Math.PI * 2;
-      for (const part of parts.slice()) {
+      for (const part of getCompositePartsInDrawOrder()) {
         if (!part.visible) continue;
         const layer = extractedPartLayers.get(part.name);
         if (!layer) continue;
@@ -587,7 +607,7 @@ export function initApp(root: HTMLDivElement) {
   const startPreviewLoop = () => {
     if (previewRaf) cancelAnimationFrame(previewRaf);
     let lastTs = 0; let frame = 0;
-    const tick = (ts: number) => { const ctx = preview.getContext('2d')!; ctx.clearRect(0,0,preview.width,preview.height); if (previewMode === 'idle-strip') { if (stripCanvas && !stalePreview) { if (ts - lastTs > 180) { frame = (frame + 1) % state.frameCount; lastTs = ts; } const sx = frame * state.cellWidth; ctx.drawImage(stripCanvas, sx, 0, state.cellWidth, state.cellHeight, 0, 0, preview.width, preview.height); } } else { const scale = state.analysis ? Math.min(preview.width / state.analysis.width, preview.height / state.analysis.height, 1) : 1; const drawW = state.analysis ? state.analysis.width * scale : preview.width; const drawH = state.analysis ? state.analysis.height * scale : preview.height; const offsetX = (preview.width - drawW) / 2; const offsetY = (preview.height - drawH) / 2; if (previewMode === 'part-layer') { const selected = extractedPartLayers.get(selectedPartLayerName); if (selected) ctx.drawImage(selected, offsetX, offsetY, drawW, drawH); } else if (previewMode === 'composite-parts') { if (!extractedPartLayers.size) { ctx.fillStyle = '#b8d3ea'; ctx.font = '16px sans-serif'; ctx.fillText('Build Part Layers first.', 24, 40); } for (const part of parts) { if (!part.visible) continue; const layer = extractedPartLayers.get(part.name); if (!layer) continue; const t = getTransform(part.name); const pivot = pivots.get(part.name) ?? { x: layer.width / 2, y: layer.height / 2 }; const px = offsetX + pivot.x * scale; const py = offsetY + pivot.y * scale; ctx.save(); ctx.translate(px + t.translateX * scale, py + t.translateY * scale); ctx.rotate((t.rotationDeg * Math.PI) / 180); ctx.scale(t.scaleX, t.scaleY); ctx.drawImage(layer, -pivot.x * scale, -pivot.y * scale, drawW, drawH); if (part.name === activePart && toolMode === 'transform-part') { ctx.strokeStyle = '#ffd166'; ctx.lineWidth = 2; ctx.strokeRect(-pivot.x * scale, -pivot.y * scale, drawW, drawH); } ctx.restore(); } } } previewRaf = requestAnimationFrame(tick); };
+    const tick = (ts: number) => { const ctx = preview.getContext('2d')!; ctx.clearRect(0,0,preview.width,preview.height); if (previewMode === 'idle-strip') { if (stripCanvas && !stalePreview) { if (ts - lastTs > 180) { frame = (frame + 1) % state.frameCount; lastTs = ts; } const sx = frame * state.cellWidth; ctx.drawImage(stripCanvas, sx, 0, state.cellWidth, state.cellHeight, 0, 0, preview.width, preview.height); } } else { const scale = state.analysis ? Math.min(preview.width / state.analysis.width, preview.height / state.analysis.height, 1) : 1; const drawW = state.analysis ? state.analysis.width * scale : preview.width; const drawH = state.analysis ? state.analysis.height * scale : preview.height; const offsetX = (preview.width - drawW) / 2; const offsetY = (preview.height - drawH) / 2; if (previewMode === 'part-layer') { const selected = extractedPartLayers.get(selectedPartLayerName); if (selected) ctx.drawImage(selected, offsetX, offsetY, drawW, drawH); } else if (previewMode === 'composite-parts') { if (!extractedPartLayers.size) { ctx.fillStyle = '#b8d3ea'; ctx.font = '16px sans-serif'; ctx.fillText('Build Part Layers first.', 24, 40); } for (const part of getCompositePartsInDrawOrder()) { if (!part.visible) continue; const layer = extractedPartLayers.get(part.name); if (!layer) continue; const t = getTransform(part.name); const pivot = pivots.get(part.name) ?? { x: layer.width / 2, y: layer.height / 2 }; const px = offsetX + pivot.x * scale; const py = offsetY + pivot.y * scale; ctx.save(); ctx.translate(px + t.translateX * scale, py + t.translateY * scale); ctx.rotate((t.rotationDeg * Math.PI) / 180); ctx.scale(t.scaleX, t.scaleY); ctx.drawImage(layer, -pivot.x * scale, -pivot.y * scale, drawW, drawH); if (part.name === activePart && toolMode === 'transform-part') { ctx.strokeStyle = '#ffd166'; ctx.lineWidth = 2; ctx.strokeRect(-pivot.x * scale, -pivot.y * scale, drawW, drawH); } ctx.restore(); } } } previewRaf = requestAnimationFrame(tick); };
     previewRaf = requestAnimationFrame(tick);
   };
 
