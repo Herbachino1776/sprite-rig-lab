@@ -81,3 +81,9 @@ input[type="range"] { accent-color: var(--accent); }
   .zoomRail,.inspector { display: none; }
   .controlGrid { grid-template-columns: 1fr; }
 }
+.seamRepairPanel h3 { margin: 0 0 6px; color: #c897ff; letter-spacing: .04em; }
+.seamSubline { margin: 0; color: var(--muted); font-size: 12px; }
+.toggleGroup { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0; }
+.toggleGroup button { min-height: 44px; }
+.toggleGroup button.active { background: linear-gradient(140deg, #6f39ea, #8a4bff 40%, #4b2ca9); border-color: #8e63ff; }
+.seamWarning { margin: 8px 0 0; color: #ffcf8b; font-size: 12px; }
