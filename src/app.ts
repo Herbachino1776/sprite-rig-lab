@@ -510,7 +510,17 @@ export function initApp(root: HTMLDivElement) {
         if (!part.visible) continue;
         const layer = extractedPartLayers.get(part.name);
         if (!layer) continue;
-        const partPivot = pivots.get(part.name) ?? { x: layer.width / 2, y: layer.height / 2 };
+        const fallbackPivot = { x: layer.width / 2, y: layer.height / 2 };
+        let partPivot = pivots.get(part.name) ?? fallbackPivot;
+        if (part.name === 'front_arm' && !pivots.has(part.name)) {
+          const armBounds = findAlphaBounds(layer);
+          if (armBounds) {
+            partPivot = {
+              x: armBounds.minX + (armBounds.maxX - armBounds.minX) * 0.5,
+              y: armBounds.minY + (armBounds.maxY - armBounds.minY) * 0.22,
+            };
+          }
+        }
         const role = part.name;
         let bobY = 0; let rot = 0; let sx = 1; let sy = 1; let driftX = 0;
         if (animationMode === 'part-based-small-walk') {
@@ -533,12 +543,12 @@ export function initApp(root: HTMLDivElement) {
           const swing = attackSettings.armSwing;
           const recoilAmt = attackSettings.recoilAmount;
           if (attackSettings.attackStyle === 'overhead-chop') {
-            const chopRaise = Math.sin(Math.min(1, attackT * 2) * Math.PI * 0.5);
             const chopDown = Math.sin(Math.min(1, Math.max(0, (attackT - 0.2) / 0.65)) * Math.PI * 0.5);
-            if (role === 'torso') { driftX = (chopDown * 4.8 * reach - recoil * 3.4 * recoilAmt) * intensityAttack; bobY = -(chopDown * 1.1 + chopRaise * 0.3) * intensityAttack; rot = (chopDown * 4.2 * lean - recoil * 3.2 * recoilAmt) * intensityAttack; }
-            else if (role === 'head' || role === 'horns') { driftX = (chopDown * 2.4 * reach - recoil * 1.6 * recoilAmt) * intensityAttack; bobY = -(chopDown * 0.7 + chopRaise * 0.25) * intensityAttack; rot = (chopDown * 2.2 * lean - recoil * 1.4 * recoilAmt) * intensityAttack; }
-            else if (role === 'front_arm') { driftX = (chopRaise * -1.5 + chopDown * 5.8 * reach - recoil * 3.8 * recoilAmt) * intensityAttack; bobY = -(chopRaise * 2.2 - chopDown * 0.6) * intensityAttack; rot = (-chopRaise * attackSettings.chopRaiseAngle * swing * attackSettings.chopArcAmount + chopDown * attackSettings.chopDownAngle * swing - recoil * 16 * recoilAmt) * intensityAttack; }
-            else if (role === 'rear_arm') { driftX = (-chopDown * 1.4 * reach + recoil * 1.8 * recoilAmt) * intensityAttack; rot = (chopRaise * 5 - chopDown * 7 * swing + recoil * 8 * recoilAmt) * intensityAttack; }
+            const chopLift = 1 - Math.sin(Math.min(1, Math.max(0, (attackT - 0.18) / 0.52)) * Math.PI * 0.5);
+            if (role === 'torso') { driftX = (chopDown * 4.8 * reach - recoil * 3.4 * recoilAmt) * intensityAttack; bobY = -(chopDown * 1.1 + chopLift * 0.3) * intensityAttack; rot = (chopDown * 3.4 * lean - recoil * 3.2 * recoilAmt) * intensityAttack; }
+            else if (role === 'head' || role === 'horns') { driftX = (chopDown * 2.4 * reach - recoil * 1.6 * recoilAmt) * intensityAttack; bobY = -(chopDown * 0.7 + chopLift * 0.2) * intensityAttack; rot = (chopDown * 1.9 * lean - recoil * 1.4 * recoilAmt) * intensityAttack; }
+            else if (role === 'front_arm') { driftX = (-chopLift * 1.2 + chopDown * 5.8 * reach - recoil * 3.8 * recoilAmt) * intensityAttack; bobY = -(chopLift * 2.4 + chopDown * 0.4) * intensityAttack; rot = (chopLift * attackSettings.chopRaiseAngle * swing * attackSettings.chopArcAmount - chopDown * attackSettings.chopDownAngle * swing - recoil * 14 * recoilAmt) * intensityAttack; }
+            else if (role === 'rear_arm') { driftX = (-chopDown * 1.4 * reach + recoil * 1.8 * recoilAmt) * intensityAttack; rot = (chopLift * 3 - chopDown * 7 * swing + recoil * 8 * recoilAmt) * intensityAttack; }
             else if (role === 'tail' || role === 'extra_01') { rot = (-chopDown * 1.8 + recoil * 2.3 * recoilAmt) * intensityAttack; driftX = (-chopDown * 1.2 + recoil * 1.4) * intensityAttack; }
             else if (role === 'front_leg' || role === 'rear_leg') { bobY = Math.max(0, chopDown) * 0.25; rot = Math.sin(phase + (role === 'rear_leg' ? 0.6 : 0)) * 0.25; }
           } else if (role === 'torso') { driftX = (strike * 7 * reach - recoil * 4.5 * recoilAmt) * intensityAttack; bobY = -strike * 1.2 * intensityAttack; rot = (strike * 6 * lean - recoil * 5 * recoilAmt) * intensityAttack; }
