@@ -55,11 +55,15 @@ export type ProjectSaveData = {
     footLockStrength: number;
   };
   attackSettings?: {
+    attackStyle?: 'forward-strike' | 'overhead-chop';
     attackIntensity: number;
     attackReach: number;
     torsoLean: number;
     armSwing: number;
     recoilAmount: number;
+    chopRaiseAngle?: number;
+    chopDownAngle?: number;
+    chopArcAmount?: number;
   };
 };
 
