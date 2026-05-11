@@ -155,10 +155,14 @@ export function initApp(root: HTMLDivElement) {
   const overlayCache = new Map<string, OverlayCache>();
   const defaultLayerOrder: string[] = [...defaultPartNames];
   const legacyBadDefaultLayerOrder: string[] = ['rear_arm', 'rear_leg', 'torso', 'head', 'front_arm', 'front_leg', 'tail', 'extra_01', 'horns'];
+  const legacyDefaultLayerOrder: string[] = ['rear_leg', 'rear_arm', 'torso', 'head', 'front_arm', 'front_leg', 'tail', 'extra_01', 'horns'];
 
   const normalizeLayerOrder = (layerOrder: string[] | undefined): string[] => {
     if (!layerOrder?.length) return [...defaultLayerOrder];
-    if (layerOrder.length === legacyBadDefaultLayerOrder.length && layerOrder.every((name, index) => name === legacyBadDefaultLayerOrder[index])) {
+    if (
+      (layerOrder.length === legacyBadDefaultLayerOrder.length && layerOrder.every((name, index) => name === legacyBadDefaultLayerOrder[index]))
+      || (layerOrder.length === legacyDefaultLayerOrder.length && layerOrder.every((name, index) => name === legacyDefaultLayerOrder[index]))
+    ) {
       return [...defaultLayerOrder];
     }
     const deduped = layerOrder.filter((name, index) => layerOrder.indexOf(name) === index);

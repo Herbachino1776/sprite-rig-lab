@@ -7,7 +7,7 @@ export type MaskPart = {
   maskCanvas: HTMLCanvasElement | null;
 };
 
-export const defaultPartNames = ['rear_leg', 'rear_arm', 'torso', 'head', 'front_arm', 'front_leg', 'tail', 'extra_01', 'horns'] as const;
+export const defaultPartNames = ['front_arm', 'front_leg', 'rear_leg', 'rear_arm', 'torso', 'head', 'extra_01', 'tail', 'horns'] as const;
 
 export type ProjectState = {
   frameCount: 5 | 6;
