@@ -102,13 +102,14 @@ export function initApp(root: HTMLDivElement) {
   let idleSettings: IdleSettings = { ...defaultIdleSettings };
   let walkSettings: WalkSettings = { ...defaultWalkSettings };
   let attackSettings: AttackSettings = { ...defaultAttackSettings };
-  const defaultSeamRepairSettings: SeamRepairSettings = { enabled: true, edgeBleedPx: 3, edgeFeatherPx: 1, jointOverlapPx: 8, gapFillEnabled: true, seamBlendStrength: 65 };
+  const defaultSeamRepairSettings: SeamRepairSettings = { enabled: true, edgeBleedPx: 1, edgeFeatherPx: 0.5, jointOverlapPx: 3, gapFillEnabled: true, seamBlendStrength: 25 };
   let seamRepairSettings: SeamRepairSettings = { ...defaultSeamRepairSettings };
   let selectedPartLayerName = defaultPartNames[0] as string;
   const rawExtractedPartLayers = new Map<string, HTMLCanvasElement>();
   const processedPartLayers = new Map<string, HTMLCanvasElement>();
   let seamLayersNeedRebuild = true;
   let seamRepairPreviewMode = false;
+  let seamRepairWarnings: string[] = [];
 
   let activePart = defaultPartNames[0] as string;
   let toolMode: ToolMode = 'brush-add';
@@ -138,7 +139,7 @@ export function initApp(root: HTMLDivElement) {
   <section class="panel modeControls">
   <div id="maskControls"><div class="segmented toolModes"><button id="brushAddMode" type="button">Brush Add</button><button id="brushEraseMode" type="button">Brush Erase</button><button id="lassoAddMode" type="button">Lasso Add</button><button id="lassoEraseMode" type="button">Lasso Erase</button><button id="undoMaskAction" type="button" disabled>Undo</button><button id="cancelLasso" type="button" disabled>Cancel Lasso</button></div><div class="fineModeRow"><button id="fineModeToggle" type="button">Fine: Off</button><button id="fineModeExit" type="button" hidden>Exit Fine</button><span id="fineModeLabel" class="fineModeLabel" hidden>Fine Mode</span></div><div class="controlGrid"><div class="compactSlider"><label for="brushSize">Brush Size <span id="brushSizeValue">24</span></label><input id="brushSize" type="range" min="1" max="256" value="24" /></div><div class="compactSlider"><label for="overlayOpacity">Overlay Opacity <span id="overlayOpacityValue">45%</span></label><input id="overlayOpacity" type="range" min="0.05" max="1" step="0.05" value="0.45" /></div></div><div class="tipLine">Tip: Use Lasso Add to create clean masks around body parts.</div></div>
   <div id="rigControls" hidden><div class="segmented toolModes"><button id="setPivotMode" type="button">Set Pivot</button><button id="setFloorMode" type="button">Set Floor Contact</button><button id="transformPartMode" type="button">Transform Part</button></div><div class="autoRigPanel"><div class="row"><button id="autoPlacePivotsButton" class="primary" type="button">Auto-place pivots & floor contacts</button></div><label class="inlineToggle"><input id="overwritePivots" type="checkbox" />Overwrite existing pivots & floor contacts</label><div id="autoRigFeedback" class="partInfo">Auto rig hints are ready after masks (and optionally built part layers).</div></div><div class="transformPanel" id="transformPanel" hidden><div class="compactSlider"><label for="rotationDeg">Rotate <span id="rotationDegValue">0°</span></label><input id="rotationDeg" type="range" min="-180" max="180" step="1" value="0" /></div><div class="compactSlider"><label for="uniformScale">Scale <span id="uniformScaleValue">1.00</span></label><input id="uniformScale" type="range" min="0.25" max="2" step="0.01" value="1" /></div><div class="row nudgeRow"><button id="nudgeUp" type="button">↑</button><button id="nudgeLeft" type="button">←</button><button id="nudgeRight" type="button">→</button><button id="nudgeDown" type="button">↓</button></div><div class="row"><button id="resetPartTransform" type="button">Reset Part</button><button id="resetAllTransforms" type="button">Reset All</button></div></div></div>
-  <div id="animateControls" hidden><div class="segmented"><button id="wholeIdleMode" class="active" type="button">Whole Sprite Idle</button><button id="partIdleMode" type="button">Part-Based Idle</button><button id="partWalkMode" type="button">Part-Based Small Walk</button><button id="partAttackMode" type="button">Part-Based Attack</button></div><div class="controlGrid" id="idleControlGrid"><div class="compactSlider"><label for="breathingAmount">Breathing <span id="breathingAmountValue">1.00</span></label><input id="breathingAmount" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="headSway">Head sway <span id="headSwayValue">1.00</span></label><input id="headSway" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="armDrift">Arm drift <span id="armDriftValue">1.00</span></label><input id="armDrift" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="overallIntensity">Overall <span id="overallIntensityValue">1.00</span></label><input id="overallIntensity" type="range" min="0" max="2" step="0.05" value="1" /></div></div><div class="controlGrid" id="walkControlGrid"><div class="compactSlider"><label for="walkIntensity">Walk intensity <span id="walkIntensityValue">1.00</span></label><input id="walkIntensity" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="strideWidth">Stride width <span id="strideWidthValue">1.00</span></label><input id="strideWidth" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="legCrossing">Leg crossing <span id="legCrossingValue">0.25</span></label><input id="legCrossing" type="range" min="0" max="1" step="0.05" value="0.25" /></div><div class="compactSlider"><label for="hipSway">Hip sway <span id="hipSwayValue">1.00</span></label><input id="hipSway" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="armSwing">Arm swing <span id="armSwingValue">1.00</span></label><input id="armSwing" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="footLockStrength">Foot lock <span id="footLockStrengthValue">0.85</span></label><input id="footLockStrength" type="range" min="0" max="1" step="0.05" value="0.85" /></div></div><div id="attackStyleRow" class="segmented"><button id="attackStyleForward" class="active" type="button">Forward Strike</button><button id="attackStyleChop" type="button">Overhead Chop</button></div><div class="controlGrid" id="attackControlGrid"><div class="compactSlider"><label for="attackIntensity">Attack intensity <span id="attackIntensityValue">1.00</span></label><input id="attackIntensity" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="attackReach">Attack reach <span id="attackReachValue">1.00</span></label><input id="attackReach" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="torsoLean">Torso lean <span id="torsoLeanValue">1.00</span></label><input id="torsoLean" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="attackArmSwing">Arm swing <span id="attackArmSwingValue">1.00</span></label><input id="attackArmSwing" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="recoilAmount">Recoil amount <span id="recoilAmountValue">1.00</span></label><input id="recoilAmount" type="range" min="0" max="2" step="0.05" value="1" /></div><section class="panel seamRepairPanel" id="seamRepairPanel"><h3>SEAM REPAIR</h3><p class="seamSubline">Applied to part-based renders only.</p><p class="seamSubline">Rebuilds on Generate Strip.</p><div class="toggleGroup" id="seamRepairEnabled"><button id="seamRepairOff" type="button">Off</button><button id="seamRepairOn" type="button" class="active">On</button></div><div class="controlGrid"><div class="compactSlider"><label for="edgeBleedPx">Edge Bleed <span id="edgeBleedPxValue">2px</span></label><input id="edgeBleedPx" type="range" min="1" max="4" step="1" value="2" /></div><div class="compactSlider"><label for="edgeFeatherPx">Feather <span id="edgeFeatherPxValue">1.0px</span></label><input id="edgeFeatherPx" type="range" min="0" max="2" step="0.25" value="1" /></div><div class="compactSlider"><label for="jointOverlapPx">Joint Overlap <span id="jointOverlapPxValue">5px</span></label><input id="jointOverlapPx" type="range" min="2" max="12" step="1" value="5" /></div><div class="compactSlider"><label for="seamBlendStrength">Blend Strength <span id="seamBlendStrengthValue">50%</span></label><input id="seamBlendStrength" type="range" min="0" max="100" step="1" value="50" /></div></div><div class="toggleGroup" id="gapFillEnabled"><button id="gapFillOff" type="button">Gap Fill Off</button><button id="gapFillOn" type="button" class="active">Gap Fill On</button></div><div class="row"><button id="strongSeamTest" type="button">Strong Seam Test</button><button id="resetSeamSettings" type="button">Reset Seam Settings</button></div><div class="toggleGroup" id="seamRepairPreviewMode"><button id="seamPreviewRaw" type="button" class="active">Preview Raw</button><button id="seamPreviewProcessed" type="button">Preview Seam-Repaired</button></div><p id="seamDeltaWarning" class="seamWarning" hidden>No visible seam-repair delta detected. Try rebuilding part layers or increasing settings.</p></section></div><div class="row"><button id="resetIdleSettings" type="button">Reset idle settings</button><button id="resetWalkSettings" type="button">Reset walk settings</button><button id="resetAttackSettings" type="button">Reset attack settings</button><button id="generateButton" class="primary">Generate Strip</button><button id="buildPartLayersButton" type="button">Build Part Layers</button><button id="exportSelectedPartButton" type="button">Export Selected Part PNG</button></div><div class="row"><label>Preview Mode<select id="previewMode"><option value="idle-strip">Idle Strip</option><option value="part-layer">Part Layer Preview</option><option value="composite-parts">Composite Parts Preview</option></select></label></div><section class="previewPanel"><h3>Preview</h3><canvas id="preview" width="1024" height="1024"></canvas></section></div>
+<div id="animateControls" hidden><div class="segmented"><button id="wholeIdleMode" class="active" type="button">Whole Sprite Idle</button><button id="partIdleMode" type="button">Part-Based Idle</button><button id="partWalkMode" type="button">Part-Based Small Walk</button><button id="partAttackMode" type="button">Part-Based Attack</button></div><div class="controlGrid" id="idleControlGrid"><div class="compactSlider"><label for="breathingAmount">Breathing <span id="breathingAmountValue">1.00</span></label><input id="breathingAmount" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="headSway">Head sway <span id="headSwayValue">1.00</span></label><input id="headSway" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="armDrift">Arm drift <span id="armDriftValue">1.00</span></label><input id="armDrift" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="overallIntensity">Overall <span id="overallIntensityValue">1.00</span></label><input id="overallIntensity" type="range" min="0" max="2" step="0.05" value="1" /></div></div><div class="controlGrid" id="walkControlGrid"><div class="compactSlider"><label for="walkIntensity">Walk intensity <span id="walkIntensityValue">1.00</span></label><input id="walkIntensity" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="strideWidth">Stride width <span id="strideWidthValue">1.00</span></label><input id="strideWidth" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="legCrossing">Leg crossing <span id="legCrossingValue">0.25</span></label><input id="legCrossing" type="range" min="0" max="1" step="0.05" value="0.25" /></div><div class="compactSlider"><label for="hipSway">Hip sway <span id="hipSwayValue">1.00</span></label><input id="hipSway" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="armSwing">Arm swing <span id="armSwingValue">1.00</span></label><input id="armSwing" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="footLockStrength">Foot lock <span id="footLockStrengthValue">0.85</span></label><input id="footLockStrength" type="range" min="0" max="1" step="0.05" value="0.85" /></div></div><div id="attackStyleRow" class="segmented"><button id="attackStyleForward" class="active" type="button">Forward Strike</button><button id="attackStyleChop" type="button">Overhead Chop</button></div><div class="controlGrid" id="attackControlGrid"><div class="compactSlider"><label for="attackIntensity">Attack intensity <span id="attackIntensityValue">1.00</span></label><input id="attackIntensity" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="attackReach">Attack reach <span id="attackReachValue">1.00</span></label><input id="attackReach" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="torsoLean">Torso lean <span id="torsoLeanValue">1.00</span></label><input id="torsoLean" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="attackArmSwing">Arm swing <span id="attackArmSwingValue">1.00</span></label><input id="attackArmSwing" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="recoilAmount">Recoil amount <span id="recoilAmountValue">1.00</span></label><input id="recoilAmount" type="range" min="0" max="2" step="0.05" value="1" /></div><section class="panel seamRepairPanel" id="seamRepairPanel"><h3>SEAM REPAIR</h3><p class="seamSubline">Applied to part-based renders only.</p><p class="seamSubline">Rebuilds on Generate Strip.</p><div class="toggleGroup" id="seamRepairEnabled"><button id="seamRepairOff" type="button">Disable Seam Repair</button><button id="seamRepairOn" type="button" class="active">Enable Seam Repair</button></div><div class="controlGrid"><div class="compactSlider"><label for="edgeBleedPx">Edge Bleed <span id="edgeBleedPxValue">1px</span></label><input id="edgeBleedPx" type="range" min="1" max="4" step="1" value="1" /></div><div class="compactSlider"><label for="edgeFeatherPx">Feather <span id="edgeFeatherPxValue">0.5px</span></label><input id="edgeFeatherPx" type="range" min="0" max="2" step="0.25" value="0.5" /></div><div class="compactSlider"><label for="jointOverlapPx">Joint Overlap <span id="jointOverlapPxValue">3px</span></label><input id="jointOverlapPx" type="range" min="2" max="12" step="1" value="3" /></div><div class="compactSlider"><label for="seamBlendStrength">Blend Strength <span id="seamBlendStrengthValue">25%</span></label><input id="seamBlendStrength" type="range" min="0" max="100" step="1" value="25" /></div></div><div class="toggleGroup" id="gapFillEnabled"><button id="gapFillOff" type="button">Gap Fill Off</button><button id="gapFillOn" type="button" class="active">Gap Fill On</button></div><div class="row"><button id="safeSeamDefaults" type="button">Safe Seam Defaults</button><button id="resetSeamSettings" type="button">Reset Seam Settings</button></div><div class="toggleGroup" id="seamRepairPreviewMode"><button id="seamPreviewRaw" type="button" class="active">Preview Raw</button><button id="seamPreviewProcessed" type="button">Preview Seam-Repaired</button></div><p id="seamDeltaWarning" class="seamWarning" hidden>No visible seam-repair delta detected. Try rebuilding part layers or increasing settings.</p></section></div><div class="row"><button id="resetIdleSettings" type="button">Reset idle settings</button><button id="resetWalkSettings" type="button">Reset walk settings</button><button id="resetAttackSettings" type="button">Reset attack settings</button><button id="generateButton" class="primary">Generate Strip</button><button id="buildPartLayersButton" type="button">Build Part Layers</button><button id="exportSelectedPartButton" type="button">Export Selected Part PNG</button></div><div class="row"><label>Preview Mode<select id="previewMode"><option value="idle-strip">Idle Strip</option><option value="part-layer">Part Layer Preview</option><option value="composite-parts">Composite Parts Preview</option></select></label></div><section class="previewPanel"><h3>Preview</h3><canvas id="preview" width="1024" height="1024"></canvas></section></div>
   <div id="exportControls" hidden><div class="controls"><div class="row"><label>Frames<select id="frameCount"><option value="5">5</option><option value="6" selected>6</option></select></label><label>W<input id="cellWidth" type="number" min="64" step="64" value="1024" /></label><label>H<input id="cellHeight" type="number" min="64" step="64" value="1024" /></label></div><div class="presetRow" id="presetRow"></div><div class="row"><button id="generateButtonExport" class="primary" type="button">Generate Strip</button><button id="pngButton">Export PNG Strip</button><button id="jsonButton">Export Metadata JSON</button></div><button type="button">View Export Report</button><pre id="renderReport"></pre></div><details><summary>Source Quality</summary><pre id="sourceQuality">No source loaded.</pre></details></div><div id="shellError" class="shellError" hidden></div></section></div>`;
 
   const q = <T extends HTMLElement>(id: string) => root.querySelector<T>(`#${id}`)!;
@@ -200,19 +201,30 @@ export function initApp(root: HTMLDivElement) {
     stripCanvas = null;
     exportMeta = null;
     renderReport.dataset.stale = 'true';
-  
+  };
+  const syncSeamReadout = () => {
+    q<HTMLSpanElement>('edgeBleedPxValue').textContent = `${seamRepairSettings.edgeBleedPx}px`;
+    q<HTMLSpanElement>('edgeFeatherPxValue').textContent = `${seamRepairSettings.edgeFeatherPx.toFixed(1)}px`;
+    q<HTMLSpanElement>('jointOverlapPxValue').textContent = `${seamRepairSettings.jointOverlapPx}px`;
+    q<HTMLSpanElement>('seamBlendStrengthValue').textContent = `${Math.round(seamRepairSettings.seamBlendStrength)}%`;
+    q<HTMLInputElement>('edgeBleedPx').value = String(seamRepairSettings.edgeBleedPx);
+    q<HTMLInputElement>('edgeFeatherPx').value = String(seamRepairSettings.edgeFeatherPx);
+    q<HTMLInputElement>('jointOverlapPx').value = String(seamRepairSettings.jointOverlapPx);
+    q<HTMLInputElement>('seamBlendStrength').value = String(seamRepairSettings.seamBlendStrength);
+  };
+
   q<HTMLButtonElement>('seamRepairOff').addEventListener('click', () => { seamRepairSettings.enabled = false; markStale(); syncSeamToggleUi(); });
   q<HTMLButtonElement>('seamRepairOn').addEventListener('click', () => { seamRepairSettings.enabled = true; markStale(); syncSeamToggleUi(); });
   q<HTMLButtonElement>('gapFillOff').addEventListener('click', () => { seamRepairSettings.gapFillEnabled = false; markStale(); syncSeamToggleUi(); });
   q<HTMLButtonElement>('gapFillOn').addEventListener('click', () => { seamRepairSettings.gapFillEnabled = true; markStale(); syncSeamToggleUi(); });
   q<HTMLButtonElement>('seamPreviewRaw').addEventListener('click', () => { seamRepairPreviewMode = false; syncSeamToggleUi(); });
   q<HTMLButtonElement>('seamPreviewProcessed').addEventListener('click', () => { seamRepairPreviewMode = true; syncSeamToggleUi(); });
-  ['edgeBleedPx','edgeFeatherPx','jointOverlapPx','seamBlendStrength'].forEach((id)=> q<HTMLInputElement>(id).addEventListener('input', (e)=> { (seamRepairSettings as any)[id] = Number((e.target as HTMLInputElement).value); seamLayersNeedRebuild = id === 'edgeBleedPx' || id === 'edgeFeatherPx'; markStale(); }));
-  q<HTMLButtonElement>('strongSeamTest').addEventListener('click', () => { seamRepairSettings.edgeBleedPx = 4; seamRepairSettings.edgeFeatherPx = 2; seamRepairSettings.jointOverlapPx = 12; seamRepairSettings.seamBlendStrength = 100; seamLayersNeedRebuild = true; markStale(); });
-  q<HTMLButtonElement>('resetSeamSettings').addEventListener('click', () => { seamRepairSettings = { ...defaultSeamRepairSettings }; seamLayersNeedRebuild = true; markStale(); syncSeamToggleUi(); });
+  ['edgeBleedPx','edgeFeatherPx','jointOverlapPx','seamBlendStrength'].forEach((id)=> q<HTMLInputElement>(id).addEventListener('input', (e)=> { (seamRepairSettings as any)[id] = Number((e.target as HTMLInputElement).value); seamLayersNeedRebuild = id === 'edgeBleedPx' || id === 'edgeFeatherPx'; markStale(); syncSeamReadout(); }));
+  q<HTMLButtonElement>('safeSeamDefaults').addEventListener('click', () => { seamRepairSettings = { ...defaultSeamRepairSettings, enabled: true, edgeBleedPx: 1, edgeFeatherPx: 0.5, jointOverlapPx: 3, gapFillEnabled: true, seamBlendStrength: 25 }; seamLayersNeedRebuild = true; markStale(); syncSeamToggleUi(); syncSeamReadout(); });
+  q<HTMLButtonElement>('resetSeamSettings').addEventListener('click', () => { seamRepairSettings = { ...defaultSeamRepairSettings }; seamLayersNeedRebuild = true; markStale(); syncSeamToggleUi(); syncSeamReadout(); });
   syncSeamToggleUi();
+  syncSeamReadout();
   updateExportButtonState();
-  };
 
   const selfCheck = () => {
     const shellError = q<HTMLDivElement>('shellError');
@@ -405,17 +417,77 @@ export function initApp(root: HTMLDivElement) {
 
 
   const applySimpleBleed = (layer: HTMLCanvasElement, bleedPx: number, featherPx: number) => {
-    if (bleedPx <= 0 && featherPx <= 0) return layer;
     const out = document.createElement('canvas'); out.width = layer.width; out.height = layer.height;
-    const octx = out.getContext('2d')!;
-    for (let i = bleedPx; i > 0; i--) { octx.globalAlpha = 1 / Math.max(1, i); octx.drawImage(layer, -i, 0); octx.drawImage(layer, i, 0); octx.drawImage(layer, 0, -i); octx.drawImage(layer, 0, i); }
-    octx.globalAlpha = 1; octx.drawImage(layer, 0, 0);
-    if (featherPx > 0) { octx.globalCompositeOperation = 'destination-in'; octx.filter = `blur(${featherPx}px)`; octx.drawImage(layer, 0, 0); octx.filter = 'none'; octx.globalCompositeOperation = 'source-over'; }
+    const srcCtx = layer.getContext('2d')!;
+    const src = srcCtx.getImageData(0, 0, layer.width, layer.height);
+    const data = new Uint8ClampedArray(src.data);
+    if (bleedPx > 0 || featherPx > 0) {
+      const band = Math.max(bleedPx, Math.ceil(featherPx));
+      for (let y = 0; y < layer.height; y++) for (let x = 0; x < layer.width; x++) {
+        const i = (y * layer.width + x) * 4;
+        if (src.data[i + 3] > 0) continue;
+        let bestAlpha = 0; let ri = -1;
+        for (let oy = -band; oy <= band; oy++) for (let ox = -band; ox <= band; ox++) {
+          const nx = x + ox; const ny = y + oy;
+          if (nx < 0 || ny < 0 || nx >= layer.width || ny >= layer.height) continue;
+          const ni = (ny * layer.width + nx) * 4;
+          const na = src.data[ni + 3];
+          if (na > bestAlpha) { bestAlpha = na; ri = ni; }
+        }
+        if (ri >= 0 && bestAlpha > 0) {
+          data[i] = src.data[ri];
+          data[i + 1] = src.data[ri + 1];
+          data[i + 2] = src.data[ri + 2];
+          data[i + 3] = Math.min(bestAlpha, 110);
+        }
+      }
+    }
+    if (featherPx > 0) {
+      const base = src.data;
+      const radius = Math.ceil(featherPx);
+      for (let y = 0; y < layer.height; y++) for (let x = 0; x < layer.width; x++) {
+        const i = (y * layer.width + x) * 4;
+        if (base[i + 3] > 0) continue;
+        let sum = 0; let count = 0;
+        for (let oy = -radius; oy <= radius; oy++) for (let ox = -radius; ox <= radius; ox++) {
+          const nx = x + ox; const ny = y + oy;
+          if (nx < 0 || ny < 0 || nx >= layer.width || ny >= layer.height) continue;
+          const ni = (ny * layer.width + nx) * 4;
+          if (base[ni + 3] > 0) { sum += base[ni + 3]; count++; }
+        }
+        if (count) data[i + 3] = Math.min(data[i + 3], Math.round((sum / count) * 0.35));
+      }
+    }
+    out.getContext('2d')!.putImageData(new ImageData(data, layer.width, layer.height), 0, 0);
     return out;
+  };
+  const calcLayerLuminance = (layer: HTMLCanvasElement) => {
+    const data = layer.getContext('2d')!.getImageData(0, 0, layer.width, layer.height).data;
+    let lum = 0; let alphaSum = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const a = data[i + 3] / 255;
+      if (a <= 0) continue;
+      const l = data[i] * 0.2126 + data[i + 1] * 0.7152 + data[i + 2] * 0.0722;
+      lum += l * a;
+      alphaSum += a;
+    }
+    return alphaSum > 0 ? lum / alphaSum : 0;
   };
   
   const getActivePartLayers = () => (seamRepairSettings.enabled ? processedPartLayers : rawExtractedPartLayers);
-  const rebuildProcessedPartLayers = () => { processedPartLayers.clear(); for (const [name, layer] of rawExtractedPartLayers.entries()) processedPartLayers.set(name, applySimpleBleed(layer, seamRepairSettings.edgeBleedPx, seamRepairSettings.edgeFeatherPx)); seamLayersNeedRebuild = false; };
+  const rebuildProcessedPartLayers = () => {
+    processedPartLayers.clear();
+    seamRepairWarnings = [];
+    for (const [name, layer] of rawExtractedPartLayers.entries()) {
+      const processed = applySimpleBleed(layer, seamRepairSettings.edgeBleedPx, seamRepairSettings.edgeFeatherPx);
+      processedPartLayers.set(name, processed);
+      const rawLum = calcLayerLuminance(layer);
+      const processedLum = calcLayerLuminance(processed);
+      const shiftPct = rawLum > 0 ? Math.abs((processedLum - rawLum) / rawLum) : 0;
+      if (shiftPct > 0.08) seamRepairWarnings.push(`${name}: Seam repair altered part brightness too much.`);
+    }
+    seamLayersNeedRebuild = false;
+  };
 const seamJointPairs = new Set(['torso:front_arm','torso:rear_arm','torso:front_leg','torso:rear_leg','torso:head']);
   const shouldJointBlend = (a: string, b: string) => seamJointPairs.has(`${a}:${b}`) || seamJointPairs.has(`${b}:${a}`);
 
@@ -544,7 +616,7 @@ const seamJointPairs = new Set(['torso:front_arm','torso:rear_arm','torso:front_
       const walkPhase = (frameIndex / state.frameCount) * Math.PI * 2;
       for (const part of getCompositePartsInDrawOrder()) {
         if (!part.visible) continue;
-        const layer = (seamRepairPreviewMode ? processedPartLayers : rawExtractedPartLayers).get(part.name);
+        const layer = activeLayers.get(part.name);
         if (!layer) continue;
         const fallbackPivot = { x: layer.width / 2, y: layer.height / 2 };
         let partPivot = pivots.get(part.name) ?? fallbackPivot;
@@ -598,9 +670,19 @@ const seamJointPairs = new Set(['torso:front_arm','torso:rear_arm','torso:front_
         else if (role === 'front_arm' || role === 'rear_arm' || role === 'tail' || role === 'extra_01') { bobY = Math.sin(phase + 0.8) * 1.6 * idleSettings.armDrift * intensity; driftX = Math.sin(phase + 0.4) * 1.2 * idleSettings.armDrift * intensity; rot = Math.sin(phase + 0.2) * 1.8 * idleSettings.armDrift * intensity; }
         else if (role === 'front_leg' || role === 'rear_leg') { bobY = Math.sin(phase) * 0.35 * intensity; rot = Math.sin(phase + 0.4) * 0.4 * intensity; }
         frameCtx.save(); frameCtx.translate(state.cellWidth / 2, plan.baseFloor); frameCtx.scale(renderScale, renderScale); frameCtx.translate(partPivot.x + driftX, partPivot.y + bobY - state.analysis!.floorY); frameCtx.rotate((rot * Math.PI) / 180); frameCtx.scale(sx, sy);
-        if (seamRepairSettings.enabled && seamRepairSettings.gapFillEnabled && role !== 'torso') { frameCtx.globalAlpha = 0.35; frameCtx.drawImage(layer, -partPivot.x - seamRepairSettings.jointOverlapPx * 0.2, -partPivot.y); frameCtx.globalAlpha = 1; }
+        if (seamRepairSettings.enabled && seamRepairSettings.gapFillEnabled && shouldJointBlend('torso', role)) {
+          frameCtx.globalAlpha = 0.12;
+          frameCtx.drawImage(layer, -partPivot.x - Math.min(2, seamRepairSettings.jointOverlapPx * 0.15), -partPivot.y);
+          frameCtx.globalAlpha = 1;
+        }
         frameCtx.drawImage(layer, -partPivot.x, -partPivot.y);
-        if (seamRepairSettings.enabled && seamRepairSettings.seamBlendStrength > 0 && shouldJointBlend('torso', role)) { frameCtx.globalAlpha = seamRepairSettings.seamBlendStrength / 100; frameCtx.globalCompositeOperation = 'lighter'; frameCtx.drawImage(layer, -partPivot.x, -partPivot.y); frameCtx.globalCompositeOperation = 'source-over'; frameCtx.globalAlpha = 1; }
+        if (seamRepairSettings.enabled && seamRepairSettings.seamBlendStrength > 0 && shouldJointBlend('torso', role)) {
+          frameCtx.globalCompositeOperation = 'destination-over';
+          frameCtx.globalAlpha = Math.min(0.35, seamRepairSettings.seamBlendStrength / 100) * 0.45;
+          frameCtx.drawImage(layer, -partPivot.x - Math.min(3, seamRepairSettings.jointOverlapPx * 0.25), -partPivot.y);
+          frameCtx.globalCompositeOperation = 'source-over';
+          frameCtx.globalAlpha = 1;
+        }
         frameCtx.restore();
       }
     };
@@ -647,7 +729,7 @@ const seamJointPairs = new Set(['torso:front_arm','torso:rear_arm','torso:front_
     const recommendedCellWidth = envelope ? Math.ceil((envelope.width / Math.max(0.1, 1 - safePaddingXPercent * 2)) / 64) * 64 : state.cellWidth;
     const recommendedCellHeight = envelope ? Math.ceil((envelope.height / Math.max(0.1, 1 - safePaddingYPercent * 2)) / 64) * 64 : state.cellHeight;
     syncRecommendedPreset(false);
-    exportMeta = { animationMode, partBasedIdle: animationMode === 'part-based-idle', idleSettings: { ...idleSettings }, walkSettings: { ...walkSettings }, attackSettings: { ...attackSettings }, seamRepairSettings: { ...seamRepairSettings }, frameCount: state.frameCount, cellWidth: state.cellWidth, cellHeight: state.cellHeight, stripWidth: canvas.width, stripHeight: canvas.height, floorY: plan.baseFloor, renderScale: Number(finalRenderScale.toFixed(4)), selectedPresetLabel, recommendedPresetLabel, warnings: compileWarnings, bleedRisk: plan.bleedRisk, frameBounds, motionEnvelope: envelope, motionSafeScale, clippingPrevented, recommendedCellWidth, recommendedCellHeight, leftMarginMin: Math.min(...frameBounds.map((r) => r.finalLeftMargin)), rightMarginMin: Math.min(...frameBounds.map((r) => r.finalRightMargin)), topMarginMin: envelope ? envelope.minY : 0, bottomMarginMin: envelope ? state.cellHeight - 1 - envelope.maxY : 0, processedLayersUsed: seamRepairSettings.enabled, seamRepairWarnings: seamLayersNeedRebuild ? ['Rebuild Part Layers to apply edge bleed/feather changes.'] : [] };
+    exportMeta = { animationMode, partBasedIdle: animationMode === 'part-based-idle', idleSettings: { ...idleSettings }, walkSettings: { ...walkSettings }, attackSettings: { ...attackSettings }, seamRepairSettings: { ...seamRepairSettings }, frameCount: state.frameCount, cellWidth: state.cellWidth, cellHeight: state.cellHeight, stripWidth: canvas.width, stripHeight: canvas.height, floorY: plan.baseFloor, renderScale: Number(finalRenderScale.toFixed(4)), selectedPresetLabel, recommendedPresetLabel, warnings: compileWarnings, bleedRisk: plan.bleedRisk, frameBounds, motionEnvelope: envelope, motionSafeScale, clippingPrevented, recommendedCellWidth, recommendedCellHeight, leftMarginMin: Math.min(...frameBounds.map((r) => r.finalLeftMargin)), rightMarginMin: Math.min(...frameBounds.map((r) => r.finalRightMargin)), topMarginMin: envelope ? envelope.minY : 0, bottomMarginMin: envelope ? state.cellHeight - 1 - envelope.maxY : 0, processedLayersUsed: seamRepairSettings.enabled, seamRepairWarnings: [...(seamLayersNeedRebuild ? ['Rebuild Part Layers to apply edge bleed/feather changes.'] : []), ...seamRepairWarnings] };
     renderReport.textContent = JSON.stringify(exportMeta, null, 2);
     renderReport.dataset.stale = 'false';
     updateExportButtonState();
@@ -665,14 +747,14 @@ const seamJointPairs = new Set(['torso:front_arm','torso:rear_arm','torso:front_
 
   generateButton.addEventListener('click', generateStripAndPreview);
   
-  const syncSeamToggleUi = () => {
+  function syncSeamToggleUi() {
     q<HTMLButtonElement>('seamRepairOff').classList.toggle('active', !seamRepairSettings.enabled);
     q<HTMLButtonElement>('seamRepairOn').classList.toggle('active', seamRepairSettings.enabled);
     q<HTMLButtonElement>('gapFillOff').classList.toggle('active', !seamRepairSettings.gapFillEnabled);
     q<HTMLButtonElement>('gapFillOn').classList.toggle('active', seamRepairSettings.gapFillEnabled);
     q<HTMLButtonElement>('seamPreviewRaw').classList.toggle('active', !seamRepairPreviewMode);
     q<HTMLButtonElement>('seamPreviewProcessed').classList.toggle('active', seamRepairPreviewMode);
-  };
+  }
 const syncShellModeControls = () => {
     ['modeMask', 'modeRig', 'modeAnimate', 'modeExport'].forEach((id, index) => q<HTMLButtonElement>(id).classList.toggle('active', ['mask', 'rig', 'animate', 'export'][index] === shellMode));
     q<HTMLDivElement>('maskControls').hidden = shellMode !== 'mask';
