@@ -54,6 +54,14 @@ export type ProjectSaveData = {
     armSwing: number;
     footLockStrength: number;
   };
+  seamRepairSettings?: {
+    enabled: boolean;
+    edgeBleedPx: number;
+    edgeFeatherPx: number;
+    jointOverlapPx: number;
+    gapFillEnabled: boolean;
+    seamBlendStrength: number;
+  };
   attackSettings?: {
     attackStyle?: 'forward-strike' | 'overhead-chop';
     attackIntensity: number;
