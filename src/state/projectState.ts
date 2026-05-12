@@ -39,7 +39,7 @@ export type ProjectSaveData = {
     safePaddingYPercent?: number;
   };
   activePart?: string;
-  animationMode?: 'whole-sprite-idle' | 'part-based-idle' | 'part-based-small-walk' | 'part-based-attack';
+  animationMode?: 'whole-sprite-idle' | 'part-based-idle' | 'part-based-small-walk' | 'part-based-attack' | 'part-based-globular-crawl';
   idleSettings?: {
     breathingAmount: number;
     headSway: number;
@@ -72,6 +72,14 @@ export type ProjectSaveData = {
     chopRaiseAngle?: number;
     chopDownAngle?: number;
     chopArcAmount?: number;
+  };
+  globularCrawlSettings?: {
+    crawlIntensity: number;
+    bodySquash: number;
+    pullReach: number;
+    forwardLurch: number;
+    armPull: number;
+    trailingDrag: number;
   };
 };
 
