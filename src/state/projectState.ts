@@ -9,7 +9,8 @@ export type MaskPart = {
 
 export const defaultPartNames = ['front_arm', 'front_leg', 'rear_leg', 'rear_arm', 'torso', 'head', 'extra_01', 'tail', 'horns'] as const;
 export const globularPartNames = ['base', 'torso', 'head', 'front_arm', 'rear_arm', 'extra_01', 'tail'] as const;
-export type RigTemplate = 'biped' | 'globular';
+export const quadrupedPartNames = ['far_rear_leg', 'far_front_leg', 'torso', 'neck', 'head', 'near_rear_leg', 'near_front_leg', 'tail', 'extra_01', 'horns'] as const;
+export type RigTemplate = 'biped' | 'globular' | 'quadruped';
 
 export type ProjectState = {
   frameCount: 5 | 6;
@@ -42,7 +43,7 @@ export type ProjectSaveData = {
   };
   activePart?: string;
   rigTemplate?: RigTemplate;
-  animationMode?: 'whole-sprite-idle' | 'part-based-idle' | 'part-based-small-walk' | 'part-based-attack' | 'part-based-globular-crawl';
+  animationMode?: 'whole-sprite-idle' | 'part-based-idle' | 'part-based-small-walk' | 'part-based-attack' | 'part-based-globular-crawl' | 'part-based-quadruped-walk';
   idleSettings?: {
     breathingAmount: number;
     headSway: number;
@@ -83,6 +84,13 @@ export type ProjectSaveData = {
     forwardLurch: number;
     armPull: number;
     trailingDrag: number;
+  };
+  quadrupedWalkSettings?: {
+    stepLength: number;
+    legLift: number;
+    bodyBob: number;
+    headBob: number;
+    gaitIntensity: number;
   };
 };
 
