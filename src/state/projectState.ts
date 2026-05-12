@@ -8,6 +8,8 @@ export type MaskPart = {
 };
 
 export const defaultPartNames = ['front_arm', 'front_leg', 'rear_leg', 'rear_arm', 'torso', 'head', 'extra_01', 'tail', 'horns'] as const;
+export const globularPartNames = ['base', 'torso', 'head', 'front_arm', 'rear_arm', 'extra_01', 'tail'] as const;
+export type RigTemplate = 'biped' | 'globular';
 
 export type ProjectState = {
   frameCount: 5 | 6;
@@ -39,6 +41,7 @@ export type ProjectSaveData = {
     safePaddingYPercent?: number;
   };
   activePart?: string;
+  rigTemplate?: RigTemplate;
   animationMode?: 'whole-sprite-idle' | 'part-based-idle' | 'part-based-small-walk' | 'part-based-attack' | 'part-based-globular-crawl';
   idleSettings?: {
     breathingAmount: number;
