@@ -19,7 +19,7 @@ type AttackSettings = { attackStyle: AttackStyle; attackIntensity: number; attac
 type SeamRepairSettings = { enabled: boolean; edgeBleedPx: number; edgeFeatherPx: number; jointOverlapPx: number; gapFillEnabled: boolean; seamBlendStrength: number };
 type SeamRepairDebug = { processedLayersBuilt: boolean; processedLayerCount: number; rawLayerCount: number; lastProcessedAt: number; activeRenderSource: 'raw' | 'processed'; seamDeltaPixels: number; averageLuminanceDelta: number; alphaDeltaPixels: number };
 type UndoEntry = { partName: string; imageData: ImageData };
-type ExportMeta = { animationMode: AnimationMode; partBasedIdle: boolean; idleSettings: IdleSettings; walkSettings: WalkSettings; attackSettings: AttackSettings; seamRepairSettings: SeamRepairSettings; frameCount: number; cellWidth: number; cellHeight: number; stripWidth: number; stripHeight: number; floorY: number; renderScale: number; selectedPresetLabel: string; recommendedPresetLabel: string; defaultPresetLabel: string; defaultCellWidth: number; defaultCellHeight: number; warnings: string[]; bleedRisk: boolean; frameBounds: FrameBoundsReport[]; motionEnvelope: MotionEnvelope | null; motionSafeScale: number; clippingPrevented: boolean; recommendedCellWidth: number; recommendedCellHeight: number; leftMarginMin: number; rightMarginMin: number; topMarginMin: number; bottomMarginMin: number; processedLayersUsed: boolean; seamRepairWarnings: string[]; seamRepairEnabled: boolean; activeRenderSource: 'raw' | 'processed'; processedLayerCount: number; seamDeltaPixels: number; averageLuminanceDelta: number; exportProfileLabel?: string; baselineY?: number; horizontalCentered?: boolean; verticallyCentered?: boolean; transparentBackground?: boolean; frameWidth?: number; frameHeight?: number; };
+type ExportMeta = { animationMode: AnimationMode; partBasedIdle: boolean; idleSettings: IdleSettings; walkSettings: WalkSettings; attackSettings: AttackSettings; seamRepairSettings: SeamRepairSettings; frameCount: number; cellWidth: number; cellHeight: number; stripWidth: number; stripHeight: number; floorY: number; renderScale: number; selectedPresetLabel: string; recommendedPresetLabel: string; defaultPresetLabel: string; defaultCellWidth: number; defaultCellHeight: number; warnings: string[]; bleedRisk: boolean; frameBounds: FrameBoundsReport[]; motionEnvelope: MotionEnvelope | null; motionSafeScale: number; clippingPrevented: boolean; recommendedCellWidth: number; recommendedCellHeight: number; leftMarginMin: number; rightMarginMin: number; topMarginMin: number; bottomMarginMin: number; processedLayersUsed: boolean; seamRepairWarnings: string[]; seamRepairEnabled: boolean; activeRenderSource: 'raw' | 'processed'; processedLayerCount: number; seamDeltaPixels: number; averageLuminanceDelta: number; exportProfileLabel?: string; gameReadyProfile?: boolean; baselineY?: number; horizontalCentered?: boolean; verticallyCentered?: boolean; transparentBackground?: boolean; frameWidth?: number; frameHeight?: number; sharedEnvelope?: AlphaBounds | null; gameReadyScale?: number; minLeftPadding?: number; minRightPadding?: number; minTopPadding?: number; };
 type PreviewMode = 'idle-strip' | 'part-layer' | 'composite-parts';
 type ShellMode = 'mask' | 'rig' | 'animate' | 'export';
 type MaskStats = { bounds: { minX: number; maxX: number; minY: number; maxY: number; width: number; height: number }; area: number; centroid: Point; bottomCenter: Point; touchesFloor: boolean; warnings: string[] };
@@ -756,29 +756,45 @@ const seamJointPairs = new Set(['torso:front_arm','torso:rear_arm','torso:front_
     const normalizedFrameCanvas = document.createElement('canvas'); normalizedFrameCanvas.width = state.cellWidth; normalizedFrameCanvas.height = state.cellHeight;
     const normalizedFrameCtx = normalizedFrameCanvas.getContext('2d')!;
     const frameCopies: HTMLCanvasElement[] = [];
-    let sharedBaseY = gameReadySpec.baselineY;
+    let gameReadySharedEnvelope: AlphaBounds | null = null;
     let sharedScale = 1;
+    const minGameReadySidePadding = 24;
+    let gameReadyMinLeftPadding = 0;
+    let gameReadyMinRightPadding = 0;
+    let gameReadyMinTopPadding = 0;
+    let gameReadyClippingPrevented = clippingPrevented;
     if (useGameReadyProfile) {
-      const bottoms: number[] = [];
       for (let i = 0; i < state.frameCount; i++) {
         drawFrame(i, finalRenderScale);
         const copy = document.createElement('canvas'); copy.width = state.cellWidth; copy.height = state.cellHeight;
         copy.getContext('2d')!.drawImage(frameCanvas, 0, 0);
         frameCopies.push(copy);
         const b = findAlphaBounds(copy);
-        if (b) bottoms.push(b.maxY);
-      }
-      if (bottoms.length) sharedBaseY = Math.round(bottoms.reduce((a,b)=>a+b,0)/bottoms.length);
-      let maxW = 1; let maxHAbove = 1;
-      for (const c of frameCopies) {
-        const b = findAlphaBounds(c);
         if (!b) continue;
-        maxW = Math.max(maxW, b.width);
-        maxHAbove = Math.max(maxHAbove, sharedBaseY - b.minY);
+        gameReadySharedEnvelope = gameReadySharedEnvelope
+          ? {
+            minX: Math.min(gameReadySharedEnvelope.minX, b.minX),
+            minY: Math.min(gameReadySharedEnvelope.minY, b.minY),
+            maxX: Math.max(gameReadySharedEnvelope.maxX, b.maxX),
+            maxY: Math.max(gameReadySharedEnvelope.maxY, b.maxY),
+            width: 0,
+            height: 0,
+          }
+          : { ...b };
       }
-      const targetW = state.cellWidth * 0.84;
-      const topPadding = 12;
-      sharedScale = Math.min(1, targetW / maxW, (gameReadySpec.baselineY - topPadding) / maxHAbove);
+      if (gameReadySharedEnvelope) {
+        gameReadySharedEnvelope.width = gameReadySharedEnvelope.maxX - gameReadySharedEnvelope.minX + 1;
+        gameReadySharedEnvelope.height = gameReadySharedEnvelope.maxY - gameReadySharedEnvelope.minY + 1;
+        const maxAllowedWidth = Math.max(1, state.cellWidth - minGameReadySidePadding * 2);
+        const envelopeWidth = Math.max(1, gameReadySharedEnvelope.width);
+        const envelopeHeightAboveBaseline = Math.max(1, gameReadySpec.baselineY - gameReadySharedEnvelope.minY);
+        const safeTopPadding = 12;
+        const widthLimitedScale = maxAllowedWidth / envelopeWidth;
+        const topLimitedScale = (gameReadySpec.baselineY - safeTopPadding) / envelopeHeightAboveBaseline;
+        sharedScale = Math.min(1, widthLimitedScale, topLimitedScale);
+        if (sharedScale < 0.999) gameReadyClippingPrevented = true;
+        if (sharedScale + 0.0001 < 1) compileWarnings.push('Game Ready profile required extra downscaling to prevent clipping.');
+      }
     }
     for (let i = 0; i < state.frameCount; i++) {
       if (!useGameReadyProfile) drawFrame(i, finalRenderScale);
@@ -803,17 +819,27 @@ const seamJointPairs = new Set(['torso:front_arm','torso:rear_arm','torso:front_
       }
       if (useGameReadyProfile) {
         normalizedFrameCtx.clearRect(0, 0, state.cellWidth, state.cellHeight);
-        if (bounds) {
-          const centerX = (bounds.minX + bounds.maxX) / 2;
+        if (bounds && gameReadySharedEnvelope) {
           const targetCenterX = state.cellWidth / 2;
-          const dx = targetCenterX - centerX;
-          const dy = gameReadySpec.baselineY - bounds.maxY;
+          const sharedCenterX = (gameReadySharedEnvelope.minX + gameReadySharedEnvelope.maxX) / 2;
+          const dx = targetCenterX - sharedCenterX;
+          const dy = gameReadySpec.baselineY - gameReadySharedEnvelope.maxY;
           normalizedFrameCtx.save();
           normalizedFrameCtx.translate(targetCenterX, gameReadySpec.baselineY);
           normalizedFrameCtx.scale(sharedScale, sharedScale);
-          normalizedFrameCtx.translate(-targetCenterX, -sharedBaseY);
+          normalizedFrameCtx.translate(-targetCenterX, -gameReadySpec.baselineY);
           normalizedFrameCtx.drawImage(sourceFrame, dx, dy);
           normalizedFrameCtx.restore();
+          const normalizedBounds = findAlphaBounds(normalizedFrameCanvas);
+          if (normalizedBounds) {
+            const leftPadding = normalizedBounds.minX;
+            const rightPadding = state.cellWidth - 1 - normalizedBounds.maxX;
+            const topPadding = normalizedBounds.minY;
+            gameReadyMinLeftPadding = i === 0 ? leftPadding : Math.min(gameReadyMinLeftPadding, leftPadding);
+            gameReadyMinRightPadding = i === 0 ? rightPadding : Math.min(gameReadyMinRightPadding, rightPadding);
+            gameReadyMinTopPadding = i === 0 ? topPadding : Math.min(gameReadyMinTopPadding, topPadding);
+            if (leftPadding <= 0 || rightPadding <= 0) gameReadyClippingPrevented = false;
+          }
         }
         ctx.drawImage(normalizedFrameCanvas, i * state.cellWidth, 0);
       } else {
@@ -825,7 +851,7 @@ const seamJointPairs = new Set(['torso:front_arm','torso:rear_arm','torso:front_
     const recommendedCellWidth = envelope ? Math.ceil((envelope.width / Math.max(0.1, 1 - safePaddingXPercent * 2)) / 64) * 64 : state.cellWidth;
     const recommendedCellHeight = envelope ? Math.ceil((envelope.height / Math.max(0.1, 1 - safePaddingYPercent * 2)) / 64) * 64 : state.cellHeight;
     syncRecommendedPreset(false);
-    exportMeta = { animationMode, partBasedIdle: animationMode === 'part-based-idle', idleSettings: { ...idleSettings }, walkSettings: { ...walkSettings }, attackSettings: { ...attackSettings }, seamRepairSettings: { ...seamRepairSettings }, frameCount: state.frameCount, cellWidth: state.cellWidth, cellHeight: state.cellHeight, stripWidth: canvas.width, stripHeight: canvas.height, floorY: plan.baseFloor, renderScale: Number(finalRenderScale.toFixed(4)), selectedPresetLabel, recommendedPresetLabel, defaultPresetLabel: preferredProductionPresetLabel, defaultCellWidth: 3072, defaultCellHeight: 3072, warnings: compileWarnings, bleedRisk: plan.bleedRisk, frameBounds, motionEnvelope: envelope, motionSafeScale, clippingPrevented, recommendedCellWidth, recommendedCellHeight, leftMarginMin: Math.min(...frameBounds.map((r) => r.finalLeftMargin)), rightMarginMin: Math.min(...frameBounds.map((r) => r.finalRightMargin)), topMarginMin: envelope ? envelope.minY : 0, bottomMarginMin: envelope ? state.cellHeight - 1 - envelope.maxY : 0, processedLayersUsed: seamRepairSettings.enabled, seamRepairWarnings: [...(seamLayersNeedRebuild ? ['Rebuild Part Layers to apply edge bleed/feather changes.'] : []), ...seamRepairWarnings], seamRepairEnabled: seamRepairSettings.enabled, activeRenderSource: seamRepairSettings.enabled ? 'processed' : 'raw', processedLayerCount: processedPartLayers.size, seamDeltaPixels: seamRepairDebug.seamDeltaPixels, averageLuminanceDelta: Number(seamRepairDebug.averageLuminanceDelta.toFixed(6)), exportProfileLabel: useGameReadyProfile ? gameReadyPresetLabel : selectedPresetLabel, baselineY: useGameReadyProfile ? gameReadySpec.baselineY : undefined, horizontalCentered: useGameReadyProfile ? true : undefined, verticallyCentered: useGameReadyProfile ? false : undefined, transparentBackground: useGameReadyProfile ? true : undefined, frameWidth: useGameReadyProfile ? gameReadySpec.frameWidth : undefined, frameHeight: useGameReadyProfile ? gameReadySpec.frameHeight : undefined };
+    exportMeta = { animationMode, partBasedIdle: animationMode === 'part-based-idle', idleSettings: { ...idleSettings }, walkSettings: { ...walkSettings }, attackSettings: { ...attackSettings }, seamRepairSettings: { ...seamRepairSettings }, frameCount: state.frameCount, cellWidth: state.cellWidth, cellHeight: state.cellHeight, stripWidth: canvas.width, stripHeight: canvas.height, floorY: plan.baseFloor, renderScale: Number(finalRenderScale.toFixed(4)), selectedPresetLabel, recommendedPresetLabel, defaultPresetLabel: preferredProductionPresetLabel, defaultCellWidth: 3072, defaultCellHeight: 3072, warnings: compileWarnings, bleedRisk: plan.bleedRisk, frameBounds, motionEnvelope: envelope, motionSafeScale, clippingPrevented: useGameReadyProfile ? gameReadyClippingPrevented : clippingPrevented, recommendedCellWidth, recommendedCellHeight, leftMarginMin: Math.min(...frameBounds.map((r) => r.finalLeftMargin)), rightMarginMin: Math.min(...frameBounds.map((r) => r.finalRightMargin)), topMarginMin: envelope ? envelope.minY : 0, bottomMarginMin: envelope ? state.cellHeight - 1 - envelope.maxY : 0, processedLayersUsed: seamRepairSettings.enabled, seamRepairWarnings: [...(seamLayersNeedRebuild ? ['Rebuild Part Layers to apply edge bleed/feather changes.'] : []), ...seamRepairWarnings], seamRepairEnabled: seamRepairSettings.enabled, activeRenderSource: seamRepairSettings.enabled ? 'processed' : 'raw', processedLayerCount: processedPartLayers.size, seamDeltaPixels: seamRepairDebug.seamDeltaPixels, averageLuminanceDelta: Number(seamRepairDebug.averageLuminanceDelta.toFixed(6)), exportProfileLabel: useGameReadyProfile ? gameReadyPresetLabel : selectedPresetLabel, gameReadyProfile: useGameReadyProfile ? true : undefined, baselineY: useGameReadyProfile ? gameReadySpec.baselineY : undefined, horizontalCentered: useGameReadyProfile ? true : undefined, verticallyCentered: useGameReadyProfile ? false : undefined, transparentBackground: useGameReadyProfile ? true : undefined, frameWidth: useGameReadyProfile ? gameReadySpec.frameWidth : undefined, frameHeight: useGameReadyProfile ? gameReadySpec.frameHeight : undefined, sharedEnvelope: useGameReadyProfile ? gameReadySharedEnvelope : undefined, gameReadyScale: useGameReadyProfile ? Number(sharedScale.toFixed(4)) : undefined, minLeftPadding: useGameReadyProfile ? Number(gameReadyMinLeftPadding.toFixed(3)) : undefined, minRightPadding: useGameReadyProfile ? Number(gameReadyMinRightPadding.toFixed(3)) : undefined, minTopPadding: useGameReadyProfile ? Number(gameReadyMinTopPadding.toFixed(3)) : undefined };
     renderReport.textContent = JSON.stringify(exportMeta, null, 2);
     renderReport.dataset.stale = 'false';
     updateExportButtonState();
