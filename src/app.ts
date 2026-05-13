@@ -21,6 +21,7 @@ type GlobularCrawlSettings = { crawlIntensity: number; bodySquash: number; pullR
 type QuadrupedWalkSettings = { stepLength: number; legLift: number; bodyBob: number; headBob: number; gaitIntensity: number };
 type SeamRepairSettings = { enabled: boolean; edgeBleedPx: number; edgeFeatherPx: number; jointOverlapPx: number; gapFillEnabled: boolean; seamBlendStrength: number };
 type SeamRepairDebug = { processedLayersBuilt: boolean; processedLayerCount: number; rawLayerCount: number; lastProcessedAt: number; activeRenderSource: 'raw' | 'processed'; seamDeltaPixels: number; averageLuminanceDelta: number; alphaDeltaPixels: number };
+type PerfStats = { buildPartLayersMs: number; generateStripTotalMs: number; perFrameRenderMs: number; alphaBoundsAnalysisMs: number; gameReadyNormalizationMs: number; seamRepairProcessingMs: number; seamDeltaComparisonMs: number; gifEncodeMs: number; previewRenderMs: number; slowestStep: string; };
 type UndoEntry = { partName: string; imageData: ImageData };
 type ExportMeta = { animationMode: AnimationMode; rigTemplate: RigTemplate; partBasedIdle: boolean; idleSettings: IdleSettings; walkSettings: WalkSettings; attackSettings: AttackSettings; globularCrawlSettings: GlobularCrawlSettings; quadrupedWalkSettings: QuadrupedWalkSettings; seamRepairSettings: SeamRepairSettings; frameCount: number; cellWidth: number; cellHeight: number; stripWidth: number; stripHeight: number; floorY: number; renderScale: number; selectedPresetLabel: string; recommendedPresetLabel: string; defaultPresetLabel: string; defaultCellWidth: number; defaultCellHeight: number; warnings: string[]; bleedRisk: boolean; frameBounds: FrameBoundsReport[]; motionEnvelope: MotionEnvelope | null; motionSafeScale: number; clippingPrevented: boolean; recommendedCellWidth: number; recommendedCellHeight: number; leftMarginMin: number; rightMarginMin: number; topMarginMin: number; bottomMarginMin: number; processedLayersUsed: boolean; seamRepairWarnings: string[]; seamRepairEnabled: boolean; activeRenderSource: 'raw' | 'processed'; processedLayerCount: number; seamDeltaPixels: number; averageLuminanceDelta: number; exportProfileLabel?: string; gameReadyProfile?: boolean; baselineY?: number; horizontalCentered?: boolean; horizontalBiasApplied?: boolean; gameReadyCenterBiasX?: number; verticallyCentered?: boolean; transparentBackground?: boolean; frameWidth?: number; frameHeight?: number; sharedEnvelope?: AlphaBounds | null; gameReadyScale?: number; minLeftPadding?: number; minRightPadding?: number; minTopPadding?: number; gifWidth?: number; gifHeight?: number; gifFrameCount?: number; gifFps?: number; gifFrameDelayMs?: number; gifLoop?: boolean; };
 type PreviewMode = 'idle-strip' | 'part-layer' | 'composite-parts';
@@ -153,6 +154,9 @@ export function initApp(root: HTMLDivElement) {
   let seamRepairPreviewMode = false;
   let seamRepairWarnings: string[] = [];
   let seamRepairDebug: SeamRepairDebug = { processedLayersBuilt: false, processedLayerCount: 0, rawLayerCount: 0, lastProcessedAt: 0, activeRenderSource: 'raw', seamDeltaPixels: 0, averageLuminanceDelta: 0, alphaDeltaPixels: 0 };
+  let perfStats: PerfStats = { buildPartLayersMs: 0, generateStripTotalMs: 0, perFrameRenderMs: 0, alphaBoundsAnalysisMs: 0, gameReadyNormalizationMs: 0, seamRepairProcessingMs: 0, seamDeltaComparisonMs: 0, gifEncodeMs: 0, previewRenderMs: 0, slowestStep: 'n/a' };
+  const alphaBoundsCache = new WeakMap<HTMLCanvasElement, { version: number; bounds: AlphaBounds | null }>();
+  const alphaBoundsVersion = new WeakMap<HTMLCanvasElement, number>();
 
   let activePart = defaultPartNames[0] as string;
   let toolMode: ToolMode = 'brush-add';
@@ -342,6 +346,34 @@ export function initApp(root: HTMLDivElement) {
     q<HTMLInputElement>('edgeFeatherPx').value = String(seamRepairSettings.edgeFeatherPx);
     q<HTMLInputElement>('jointOverlapPx').value = String(seamRepairSettings.jointOverlapPx);
     q<HTMLInputElement>('seamBlendStrength').value = String(seamRepairSettings.seamBlendStrength);
+  };
+  const updatePerfReadout = () => {
+    const values: Array<[string, number]> = [
+      ['buildPartLayersMs', perfStats.buildPartLayersMs],
+      ['generateStripTotalMs', perfStats.generateStripTotalMs],
+      ['perFrameRenderMs', perfStats.perFrameRenderMs],
+      ['alphaBoundsAnalysisMs', perfStats.alphaBoundsAnalysisMs],
+      ['gameReadyNormalizationMs', perfStats.gameReadyNormalizationMs],
+      ['seamRepairProcessingMs', perfStats.seamRepairProcessingMs],
+      ['seamDeltaComparisonMs', perfStats.seamDeltaComparisonMs],
+      ['gifEncodeMs', perfStats.gifEncodeMs],
+      ['previewRenderMs', perfStats.previewRenderMs],
+    ];
+    const slowest = values.reduce((a, b) => (b[1] > a[1] ? b : a), ['n/a', 0] as [string, number]);
+    perfStats.slowestStep = slowest[0];
+    q<HTMLPreElement>('seamDebugReadout').textContent += `\n\nPerf:\n${values.map(([k, v]) => `${k}: ${v.toFixed(2)}ms`).join('\n')}\nslowestStep: ${perfStats.slowestStep}`;
+  };
+  const invalidateAlphaBounds = (canvas?: HTMLCanvasElement | null) => {
+    if (!canvas) return;
+    alphaBoundsVersion.set(canvas, (alphaBoundsVersion.get(canvas) ?? 0) + 1);
+  };
+  const getAlphaBoundsCached = (canvas: HTMLCanvasElement): AlphaBounds | null => {
+    const version = alphaBoundsVersion.get(canvas) ?? 0;
+    const cached = alphaBoundsCache.get(canvas);
+    if (cached && cached.version === version) return cached.bounds;
+    const bounds = findAlphaBounds(canvas);
+    alphaBoundsCache.set(canvas, { version, bounds });
+    return bounds;
   };
   const updateSeamDebugReadout = () => {
     seamRepairDebug.rawLayerCount = rawExtractedPartLayers.size;
@@ -632,6 +664,7 @@ export function initApp(root: HTMLDivElement) {
   
   const getActivePartLayers = () => (seamRepairSettings.enabled ? processedPartLayers : rawExtractedPartLayers);
   const rebuildProcessedPartLayers = () => {
+    const seamStart = performance.now();
     processedPartLayers.clear();
     seamRepairWarnings = [];
     let seamDeltaPixels = 0;
@@ -649,16 +682,20 @@ export function initApp(root: HTMLDivElement) {
       if (shiftPct > 0.08) seamRepairWarnings.push(`${name}: Seam repair altered part brightness too much.`);
       const rawData = layer.getContext('2d')!.getImageData(0, 0, layer.width, layer.height).data;
       const processedData = processed.getContext('2d')!.getImageData(0, 0, processed.width, processed.height).data;
+      const deltaStart = performance.now();
       for (let i = 0; i < rawData.length; i += 4) {
         if (rawData[i] !== processedData[i] || rawData[i + 1] !== processedData[i + 1] || rawData[i + 2] !== processedData[i + 2] || rawData[i + 3] !== processedData[i + 3]) seamDeltaPixels += 1;
         if (rawData[i + 3] !== processedData[i + 3]) alphaDeltaPixels += 1;
       }
+      perfStats.seamDeltaComparisonMs += performance.now() - deltaStart;
+      invalidateAlphaBounds(processed);
     }
     seamRepairDebug.seamDeltaPixels = seamDeltaPixels;
     seamRepairDebug.alphaDeltaPixels = alphaDeltaPixels;
     seamRepairDebug.averageLuminanceDelta = luminanceDeltaCount ? luminanceDeltaTotal / luminanceDeltaCount : 0;
     seamRepairDebug.lastProcessedAt += 1;
     seamLayersNeedRebuild = false;
+    perfStats.seamRepairProcessingMs = performance.now() - seamStart;
     updateSeamDebugReadout();
   };
 const seamJointPairs = new Set(['torso:front_arm','torso:rear_arm','torso:front_leg','torso:rear_leg','torso:head']);
@@ -762,6 +799,8 @@ const seamJointPairs = new Set(['torso:front_arm','torso:rear_arm','torso:front_
   };
 
   const generateStripAndPreview = () => {
+    const generateStart = performance.now();
+    perfStats = { ...perfStats, generateStripTotalMs: 0, perFrameRenderMs: 0, alphaBoundsAnalysisMs: 0, gameReadyNormalizationMs: 0, seamRepairProcessingMs: 0, seamDeltaComparisonMs: 0 };
     if (!image || !state.analysis) return;
     if ((animationMode === 'part-based-idle' || animationMode === 'part-based-small-walk' || animationMode === 'part-based-attack' || animationMode === 'part-based-globular-crawl' || animationMode === 'part-based-quadruped-walk') && !rawExtractedPartLayers.size) { setStatus('Build Part Layers first.', true); return; }
     if (animationMode === 'part-based-globular-crawl' && !rawExtractedPartLayers.has('base')) { setStatus('Globular Crawl requires a Base mask. Select Globular template and mask the bottom of the glob.', true); return; }
@@ -780,6 +819,7 @@ const seamJointPairs = new Set(['torso:front_arm','torso:rear_arm','torso:front_
     const marginWarnThreshold = state.cellWidth * 0.05;
     const compileWarnings = [...plan.warnings];
     const drawFrame = (frameIndex: number, renderScale: number) => {
+      const frameStart = performance.now();
       frameCtx.clearRect(0, 0, state.cellWidth, state.cellHeight);
       const t = idleTransform(frameIndex, state.frameCount);
       if (animationMode === 'whole-sprite-idle') {
@@ -797,7 +837,7 @@ const seamJointPairs = new Set(['torso:front_arm','torso:rear_arm','torso:front_
         const fallbackPivot = { x: layer.width / 2, y: layer.height / 2 };
         let partPivot = pivots.get(part.name) ?? fallbackPivot;
         if (part.name === 'front_arm' && !pivots.has(part.name)) {
-          const armBounds = findAlphaBounds(layer);
+          const armBounds = getAlphaBoundsCached(layer);
           if (armBounds) {
             partPivot = {
               x: armBounds.minX + (armBounds.maxX - armBounds.minX) * 0.5,
@@ -906,11 +946,14 @@ const seamJointPairs = new Set(['torso:front_arm','torso:rear_arm','torso:front_
         }
         frameCtx.restore();
       }
+      perfStats.perFrameRenderMs += performance.now() - frameStart;
     };
     let envelope: MotionEnvelope | null = null;
     for (let i = 0; i < state.frameCount; i++) {
       drawFrame(i, plan.renderScale);
-      const b = findAlphaBounds(frameCanvas);
+      const abStart = performance.now();
+      const b = getAlphaBoundsCached(frameCanvas);
+      perfStats.alphaBoundsAnalysisMs += performance.now() - abStart;
       if (!b) continue;
       envelope = envelope ? { minX: Math.min(envelope.minX, b.minX), minY: Math.min(envelope.minY, b.minY), maxX: Math.max(envelope.maxX, b.maxX), maxY: Math.max(envelope.maxY, b.maxY), width: 0, height: 0, frameHits: envelope.frameHits + 1 } : { ...b, frameHits: 1 };
     }
@@ -940,8 +983,11 @@ const seamJointPairs = new Set(['torso:front_arm','torso:rear_arm','torso:front_
         drawFrame(i, finalRenderScale);
         const copy = document.createElement('canvas'); copy.width = state.cellWidth; copy.height = state.cellHeight;
         copy.getContext('2d')!.drawImage(frameCanvas, 0, 0);
+        invalidateAlphaBounds(copy);
         frameCopies.push(copy);
-        const b = findAlphaBounds(copy);
+        const abStart = performance.now();
+        const b = getAlphaBoundsCached(copy);
+        perfStats.alphaBoundsAnalysisMs += performance.now() - abStart;
         if (!b) continue;
         gameReadySharedEnvelope = gameReadySharedEnvelope
           ? {
@@ -971,7 +1017,9 @@ const seamJointPairs = new Set(['torso:front_arm','torso:rear_arm','torso:front_
     for (let i = 0; i < state.frameCount; i++) {
       if (!useGameReadyProfile) drawFrame(i, finalRenderScale);
       const sourceFrame = useGameReadyProfile ? frameCopies[i] : frameCanvas;
-      const bounds = findAlphaBounds(sourceFrame);
+      const abStart = performance.now();
+      const bounds = getAlphaBoundsCached(sourceFrame);
+      perfStats.alphaBoundsAnalysisMs += performance.now() - abStart;
       let shiftX = 0;
       let shiftY = 0;
       let centerOffsetXBeforeCorrection = 0;
@@ -1002,7 +1050,10 @@ const seamJointPairs = new Set(['torso:front_arm','torso:rear_arm','torso:front_
           normalizedFrameCtx.translate(-targetCenterX, -activeGameReadySpec!.baselineY);
           normalizedFrameCtx.drawImage(sourceFrame, dx, dy);
           normalizedFrameCtx.restore();
-          const normalizedBounds = findAlphaBounds(normalizedFrameCanvas);
+          const normStart = performance.now();
+          invalidateAlphaBounds(normalizedFrameCanvas);
+          const normalizedBounds = getAlphaBoundsCached(normalizedFrameCanvas);
+          perfStats.gameReadyNormalizationMs += performance.now() - normStart;
           if (normalizedBounds) {
             const leftPadding = normalizedBounds.minX;
             const rightPadding = state.cellWidth - 1 - normalizedBounds.maxX;
@@ -1028,13 +1079,16 @@ const seamJointPairs = new Set(['torso:front_arm','torso:rear_arm','torso:front_
     renderReport.textContent = JSON.stringify(exportMeta, null, 2);
     renderReport.dataset.stale = 'false';
     updateExportButtonState();
+    perfStats.generateStripTotalMs = performance.now() - generateStart;
+    updateSeamDebugReadout();
+    updatePerfReadout();
     setStatus(`Generated strip ${canvas.width}x${canvas.height}`);
   };
 
   const startPreviewLoop = () => {
     if (previewRaf) cancelAnimationFrame(previewRaf);
     let lastTs = 0; let frame = 0;
-    const tick = (ts: number) => { const ctx = preview.getContext('2d')!; ctx.clearRect(0,0,preview.width,preview.height); if (previewMode === 'idle-strip') { if (stripCanvas && !stalePreview) { if (ts - lastTs > 180) { frame = (frame + 1) % state.frameCount; lastTs = ts; } const sx = frame * state.cellWidth; ctx.drawImage(stripCanvas, sx, 0, state.cellWidth, state.cellHeight, 0, 0, preview.width, preview.height); } } else { const scale = state.analysis ? Math.min(preview.width / state.analysis.width, preview.height / state.analysis.height, 1) : 1; const drawW = state.analysis ? state.analysis.width * scale : preview.width; const drawH = state.analysis ? state.analysis.height * scale : preview.height; const offsetX = (preview.width - drawW) / 2; const offsetY = (preview.height - drawH) / 2; if (previewMode === 'part-layer') { const selected = (seamRepairPreviewMode ? processedPartLayers : rawExtractedPartLayers).get(selectedPartLayerName); if (selected) ctx.drawImage(selected, offsetX, offsetY, drawW, drawH); } else if (previewMode === 'composite-parts') { if (!rawExtractedPartLayers.size) { ctx.fillStyle = '#b8d3ea'; ctx.font = '16px sans-serif'; ctx.fillText('Build Part Layers first.', 24, 40); } for (const part of getCompositePartsInDrawOrder()) { if (!part.visible) continue; const layer = (seamRepairPreviewMode ? processedPartLayers : rawExtractedPartLayers).get(part.name); if (!layer) continue; const t = getTransform(part.name); const pivot = pivots.get(part.name) ?? { x: layer.width / 2, y: layer.height / 2 }; const px = offsetX + pivot.x * scale; const py = offsetY + pivot.y * scale; ctx.save(); ctx.translate(px + t.translateX * scale, py + t.translateY * scale); ctx.rotate((t.rotationDeg * Math.PI) / 180); ctx.scale(t.scaleX, t.scaleY); ctx.drawImage(layer, -pivot.x * scale, -pivot.y * scale, drawW, drawH); if (part.name === activePart && toolMode === 'transform-part') { ctx.strokeStyle = '#ffd166'; ctx.lineWidth = 2; ctx.strokeRect(-pivot.x * scale, -pivot.y * scale, drawW, drawH); } ctx.restore(); } } } previewRaf = requestAnimationFrame(tick); };
+    const tick = (ts: number) => { const previewStart = performance.now(); const ctx = preview.getContext('2d')!; ctx.clearRect(0,0,preview.width,preview.height); if (previewMode === 'idle-strip') { if (stripCanvas && !stalePreview) { if (ts - lastTs > 180) { frame = (frame + 1) % state.frameCount; lastTs = ts; } const sx = frame * state.cellWidth; ctx.drawImage(stripCanvas, sx, 0, state.cellWidth, state.cellHeight, 0, 0, preview.width, preview.height); } } else { const scale = state.analysis ? Math.min(preview.width / state.analysis.width, preview.height / state.analysis.height, 1) : 1; const drawW = state.analysis ? state.analysis.width * scale : preview.width; const drawH = state.analysis ? state.analysis.height * scale : preview.height; const offsetX = (preview.width - drawW) / 2; const offsetY = (preview.height - drawH) / 2; if (previewMode === 'part-layer') { const selected = (seamRepairPreviewMode ? processedPartLayers : rawExtractedPartLayers).get(selectedPartLayerName); if (selected) ctx.drawImage(selected, offsetX, offsetY, drawW, drawH); } else if (previewMode === 'composite-parts') { if (!rawExtractedPartLayers.size) { ctx.fillStyle = '#b8d3ea'; ctx.font = '16px sans-serif'; ctx.fillText('Build Part Layers first.', 24, 40); } for (const part of getCompositePartsInDrawOrder()) { if (!part.visible) continue; const layer = (seamRepairPreviewMode ? processedPartLayers : rawExtractedPartLayers).get(part.name); if (!layer) continue; const t = getTransform(part.name); const pivot = pivots.get(part.name) ?? { x: layer.width / 2, y: layer.height / 2 }; const px = offsetX + pivot.x * scale; const py = offsetY + pivot.y * scale; ctx.save(); ctx.translate(px + t.translateX * scale, py + t.translateY * scale); ctx.rotate((t.rotationDeg * Math.PI) / 180); ctx.scale(t.scaleX, t.scaleY); ctx.drawImage(layer, -pivot.x * scale, -pivot.y * scale, drawW, drawH); if (part.name === activePart && toolMode === 'transform-part') { ctx.strokeStyle = '#ffd166'; ctx.lineWidth = 2; ctx.strokeRect(-pivot.x * scale, -pivot.y * scale, drawW, drawH); } ctx.restore(); } } } perfStats.previewRenderMs = performance.now() - previewStart; previewRaf = requestAnimationFrame(tick); };
     previewRaf = requestAnimationFrame(tick);
   };
 
