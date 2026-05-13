@@ -20,6 +20,9 @@ export type ProjectState = {
 };
 
 export type ProjectSaveData = {
+  sourceFileName?: string;
+  sourceBaseName?: string;
+  exportBaseNameOverride?: string;
   sourceImageDataUrl: string;
   sourceImageWidth: number;
   sourceImageHeight: number;
