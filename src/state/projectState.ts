@@ -7,10 +7,13 @@ export type MaskPart = {
   maskCanvas: HTMLCanvasElement | null;
 };
 
-export const defaultPartNames = ['front_arm', 'front_leg', 'rear_leg', 'rear_arm', 'torso', 'head', 'extra_01', 'tail', 'horns'] as const;
-export const globularPartNames = ['base', 'torso', 'head', 'front_arm', 'rear_arm', 'extra_01', 'tail'] as const;
-export const quadrupedPartNames = ['far_rear_leg', 'far_front_leg', 'torso', 'neck', 'head', 'near_rear_leg', 'near_front_leg', 'tail', 'extra_01', 'horns'] as const;
+export const defaultPartNames = ['front_arm', 'front_leg', 'rear_leg', 'rear_arm', 'torso', 'head', 'lower_jaw', 'extra_01', 'tail', 'horns'] as const;
+export const globularPartNames = ['base', 'torso', 'head', 'lower_jaw', 'front_arm', 'rear_arm', 'extra_01', 'tail'] as const;
+export const quadrupedPartNames = ['far_rear_leg', 'far_front_leg', 'torso', 'neck', 'head', 'lower_jaw', 'near_rear_leg', 'near_front_leg', 'tail', 'extra_01', 'horns'] as const;
 export type RigTemplate = 'biped' | 'globular' | 'quadruped';
+
+export type JawMode = 'closed' | 'open-hold' | 'talk' | 'pant' | 'bite-snap' | 'snarl-pulse';
+export type JawSettings = { openAngle: number; speed: number; blendAmount: number; phaseOffset: number; chatterAmount: number; pantRhythm: number; biteSnapStrength: number };
 
 export type ProjectState = {
   frameCount: 5 | 6;
@@ -95,6 +98,11 @@ export type ProjectSaveData = {
     headBob: number;
     gaitIntensity: number;
   };
+  jawAnimationEnabled?: boolean;
+  jawMode?: JawMode;
+  jawSettings?: JawSettings;
+  jawPivot?: { x: number; y: number };
+  lipLine?: { y: number };
 };
 
 export const defaultState: ProjectState = { frameCount: 6, cellWidth: 3072, cellHeight: 3072, analysis: null };
