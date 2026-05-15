@@ -1169,7 +1169,10 @@ const syncShellModeControls = () => {
     else if (jawMode === 'pant') openness = 0.5 + Math.sin(phase) * 0.35 * jawSettings.pantRhythm;
     else if (jawMode === 'bite-snap') { const s = (Math.sin(phase) + 1) * 0.5; openness = s > 0.7 ? 1 : Math.max(0, s * 0.2); openness *= jawSettings.biteSnapStrength; }
     else if (jawMode === 'snarl-pulse') openness = 0.2 + Math.max(0, Math.sin(phase)) * 0.3;
-    return baseOpen * clamp(openness, 0, 1) * jawSettings.blendAmount;
+    // Jaw open angle is inverted for screen-space downward jaw opening.
+    // On canvas, positive rotation is clockwise; for our lower_jaw art orientation this
+    // means "upward", so we negate the jaw-open value so positive openness opens downward.
+    return -baseOpen * clamp(openness, 0, 1) * jawSettings.blendAmount;
   };
   const syncJawUi = () => {
     const available = isJawRigReady();
