@@ -1,10 +1,13 @@
 import type { SpriteAnalysis } from '../image/alphaAnalysis';
 
 export type MaskPart = {
+  id?: string;
   name: string;
   visible: boolean;
   color: string;
   maskCanvas: HTMLCanvasElement | null;
+  layerType?: 'part' | 'underpaint_patch';
+  parentPartName?: string;
 };
 
 export const defaultPartNames = ['front_arm', 'front_leg', 'rear_leg', 'rear_arm', 'torso', 'head', 'lower_jaw', 'extra_01', 'tail', 'horns'] as const;
@@ -31,7 +34,7 @@ export type ProjectSaveData = {
   sourceImageHeight: number;
   sourceBounds: SpriteAnalysis['sourceBounds'];
   floorY: number;
-  parts: Array<{ name: string; visible: boolean; color: string; maskDataUrl: string | null }>;
+  parts: Array<{ id?: string; name: string; visible: boolean; color: string; maskDataUrl: string | null; layerType?: 'part' | 'underpaint_patch'; parentPartName?: string }>;
   pivots: Record<string, { x: number; y: number } | undefined>;
   floorContacts: Record<string, { x: number; y: number } | undefined>;
   transforms: Record<string, { rotationDeg: number; translateX: number; translateY: number; scaleX: number; scaleY: number } | undefined>;
