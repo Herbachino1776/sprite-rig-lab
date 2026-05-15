@@ -190,7 +190,7 @@ export function initApp(root: HTMLDivElement) {
   <section class="panel modeTabs"><button id="modeMask" class="active" type="button">✎ Mask</button><button id="modeRig" type="button">⎔ Rig</button><button id="modeAnimate" type="button">〰 Animate</button><button id="modeExport" type="button">⇩ Export</button></section>
   <section class="panel modeControls">
   <div id="maskControls"><div class="segmented toolModes"><button id="brushAddMode" type="button">Brush Add</button><button id="brushEraseMode" type="button">Brush Erase</button><button id="lassoAddMode" type="button">Lasso Add</button><button id="lassoEraseMode" type="button">Lasso Erase</button><button id="undoMaskAction" type="button" disabled>Undo</button><button id="cancelLasso" type="button" disabled>Cancel Lasso</button></div><div class="fineModeRow"><button id="fineModeToggle" type="button">Fine: Off</button><button id="fineModeExit" type="button" hidden>Exit Fine</button><span id="fineModeLabel" class="fineModeLabel" hidden>Fine Mode</span></div><div class="controlGrid"><div class="compactSlider"><label for="brushSize">Brush Size <span id="brushSizeValue">24</span></label><input id="brushSize" type="range" min="1" max="256" value="24" /></div><div class="compactSlider"><label for="overlayOpacity">Overlay Opacity <span id="overlayOpacityValue">45%</span></label><input id="overlayOpacity" type="range" min="0.05" max="1" step="0.05" value="0.45" /></div></div><div class="tipLine">Tip: Use Lasso Add to create clean masks around body parts.</div></div>
-  <div id="rigControls" hidden><div class="segmented"><button id="rigTemplateBiped" class="active" type="button">Biped</button><button id="rigTemplateGlobular" type="button">Globular</button><button id="rigTemplateQuadruped" type="button">Quadruped</button></div><p id="globularRigHint" class="tipLine" hidden>Mask base as the grounded bottom of the glob. Base replaces legs for crawl motion.</p><div class="segmented toolModes"><button id="setPivotMode" type="button">Set Pivot</button><button id="setFloorMode" type="button">Set Floor Contact</button><button id="transformPartMode" type="button">Transform Part</button></div><div class="row"><button id="addUnderpaintPatch" type="button">Add Underpaint Patch</button><label>Parent<select id="underpaintParent"></select></label><label>Name<input id="underpaintName" type="text" placeholder="torso_underpaint_01" /></label><button id="renameUnderpaintPatch" type="button">Rename Patch</button><button id="deleteUnderpaintPatch" type="button">Delete Patch</button></div><div class="autoRigPanel"><div class="row"><button id="autoPlacePivotsButton" class="primary" type="button">Auto-place pivots & floor contacts</button></div><label class="inlineToggle"><input id="overwritePivots" type="checkbox" />Overwrite existing pivots & floor contacts</label><div id="autoRigFeedback" class="partInfo">Auto rig hints are ready after masks (and optionally built part layers).</div></div><div class="transformPanel" id="transformPanel" hidden><div class="compactSlider"><label for="rotationDeg">Rotate <span id="rotationDegValue">0°</span></label><input id="rotationDeg" type="range" min="-180" max="180" step="1" value="0" /></div><div class="compactSlider"><label for="uniformScale">Scale <span id="uniformScaleValue">1.00</span></label><input id="uniformScale" type="range" min="0.25" max="2" step="0.01" value="1" /></div><div class="row nudgeRow"><button id="nudgeUp" type="button">↑</button><button id="nudgeLeft" type="button">←</button><button id="nudgeRight" type="button">→</button><button id="nudgeDown" type="button">↓</button></div><div class="row"><button id="resetPartTransform" type="button">Reset Part</button><button id="resetAllTransforms" type="button">Reset All</button></div></div></div>
+  <div id="rigControls" hidden><div class="segmented"><button id="rigTemplateBiped" class="active" type="button">Biped</button><button id="rigTemplateGlobular" type="button">Globular</button><button id="rigTemplateQuadruped" type="button">Quadruped</button></div><p id="globularRigHint" class="tipLine" hidden>Mask base as the grounded bottom of the glob. Base replaces legs for crawl motion.</p><div class="segmented toolModes"><button id="setPivotMode" type="button">Set Pivot</button><button id="setFloorMode" type="button">Set Floor Contact</button><button id="transformPartMode" type="button">Transform Part</button></div><div class="row"><button id="addUnderpaintPatch" type="button">Add Underpaint Patch</button><label>Parent<select id="underpaintParent"></select></label><label>Name<input id="underpaintName" type="text" placeholder="torso_underpaint_01" /></label><button id="renameUnderpaintPatch" type="button">Rename Patch</button><button id="deleteUnderpaintPatch" type="button">Delete Patch</button><button id="fillUnderpaintPatch" type="button">Fill Patch Test Color</button><button id="clearUnderpaintPatch" type="button">Clear Patch</button></div><pre id="underpaintDiagnostics" class="seamSubline"></pre><div class="autoRigPanel"><div class="row"><button id="autoPlacePivotsButton" class="primary" type="button">Auto-place pivots & floor contacts</button></div><label class="inlineToggle"><input id="overwritePivots" type="checkbox" />Overwrite existing pivots & floor contacts</label><div id="autoRigFeedback" class="partInfo">Auto rig hints are ready after masks (and optionally built part layers).</div></div><div class="transformPanel" id="transformPanel" hidden><div class="compactSlider"><label for="rotationDeg">Rotate <span id="rotationDegValue">0°</span></label><input id="rotationDeg" type="range" min="-180" max="180" step="1" value="0" /></div><div class="compactSlider"><label for="uniformScale">Scale <span id="uniformScaleValue">1.00</span></label><input id="uniformScale" type="range" min="0.25" max="2" step="0.01" value="1" /></div><div class="row nudgeRow"><button id="nudgeUp" type="button">↑</button><button id="nudgeLeft" type="button">←</button><button id="nudgeRight" type="button">→</button><button id="nudgeDown" type="button">↓</button></div><div class="row"><button id="resetPartTransform" type="button">Reset Part</button><button id="resetAllTransforms" type="button">Reset All</button></div></div></div>
 <div id="animateControls" hidden><div class="segmented"><button id="wholeIdleMode" class="active" type="button">Whole Sprite Idle</button><button id="partIdleMode" type="button">Part-Based Idle</button><button id="partWalkMode" type="button">Part-Based Small Walk</button><button id="partAttackMode" type="button">Part-Based Attack</button><button id="partGlobularCrawlMode" type="button">Part-Based Globular Crawl</button><button id="partQuadrupedWalkMode" type="button">Part-Based Quadruped Walk</button></div><div class="controlGrid" id="idleControlGrid"><div class="compactSlider"><label for="breathingAmount">Breathing <span id="breathingAmountValue">1.00</span></label><input id="breathingAmount" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="headSway">Head sway <span id="headSwayValue">1.00</span></label><input id="headSway" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="armDrift">Arm drift <span id="armDriftValue">1.00</span></label><input id="armDrift" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="overallIntensity">Overall <span id="overallIntensityValue">1.00</span></label><input id="overallIntensity" type="range" min="0" max="2" step="0.05" value="1" /></div></div><div class="controlGrid" id="walkControlGrid"><div class="compactSlider"><label for="walkIntensity">Walk intensity <span id="walkIntensityValue">1.00</span></label><input id="walkIntensity" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="strideWidth">Stride width <span id="strideWidthValue">1.00</span></label><input id="strideWidth" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="legCrossing">Leg crossing <span id="legCrossingValue">0.25</span></label><input id="legCrossing" type="range" min="0" max="1" step="0.05" value="0.25" /></div><div class="compactSlider"><label for="hipSway">Hip sway <span id="hipSwayValue">1.00</span></label><input id="hipSway" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="armSwing">Arm swing <span id="armSwingValue">1.00</span></label><input id="armSwing" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="footLockStrength">Foot lock <span id="footLockStrengthValue">0.85</span></label><input id="footLockStrength" type="range" min="0" max="1" step="0.05" value="0.85" /></div></div><div id="attackStyleRow" class="segmented"><button id="attackStyleForward" class="active" type="button">Forward Strike</button><button id="attackStyleChop" type="button">Overhead Chop</button></div><div class="controlGrid" id="attackControlGrid"><div class="compactSlider"><label for="attackIntensity">Attack intensity <span id="attackIntensityValue">1.00</span></label><input id="attackIntensity" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="attackReach">Attack reach <span id="attackReachValue">1.00</span></label><input id="attackReach" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="torsoLean">Torso lean <span id="torsoLeanValue">1.00</span></label><input id="torsoLean" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="attackArmSwing">Arm swing <span id="attackArmSwingValue">1.00</span></label><input id="attackArmSwing" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="recoilAmount">Recoil amount <span id="recoilAmountValue">1.00</span></label><input id="recoilAmount" type="range" min="0" max="2" step="0.05" value="1" /></div></div><div class="controlGrid" id="globularCrawlControlGrid"><div class="compactSlider"><label for="crawlIntensity">Crawl Intensity <span id="crawlIntensityValue">1.00</span></label><input id="crawlIntensity" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="bodySquash">Body Squash <span id="bodySquashValue">1.00</span></label><input id="bodySquash" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="pullReach">Pull Reach <span id="pullReachValue">1.00</span></label><input id="pullReach" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="forwardLurch">Forward Lurch <span id="forwardLurchValue">1.00</span></label><input id="forwardLurch" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="armPull">Arm Pull <span id="armPullValue">1.00</span></label><input id="armPull" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="trailingDrag">Trailing Drag <span id="trailingDragValue">1.00</span></label><input id="trailingDrag" type="range" min="0" max="2" step="0.05" value="1" /></div></div><div class="controlGrid" id="quadrupedWalkControlGrid" hidden><div class="compactSlider"><label for="quadStepLength">Step Length <span id="quadStepLengthValue">1.00</span></label><input id="quadStepLength" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="quadLegLift">Leg Lift <span id="quadLegLiftValue">1.00</span></label><input id="quadLegLift" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="quadBodyBob">Body Bob <span id="quadBodyBobValue">1.00</span></label><input id="quadBodyBob" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="quadHeadBob">Head Bob <span id="quadHeadBobValue">1.00</span></label><input id="quadHeadBob" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="quadGaitIntensity">Gait Intensity <span id="quadGaitIntensityValue">1.00</span></label><input id="quadGaitIntensity" type="range" min="0" max="2" step="0.05" value="1" /></div></div><section id="jawMotionSection" class="panel" hidden><h3>JAW MOTION</h3><p id="jawMotionHint" class="seamSubline" hidden>Add lower_jaw and set Jaw Pivot to enable jaw animation.</p><div id="jawMotionControls"><div class="toggleGroup"><button id="jawAnimOff" type="button" class="active">Jaw Animation Off</button><button id="jawAnimOn" type="button">Jaw Animation On</button></div><div class="segmented" id="jawModeRow" hidden><button id="jawModeClosed" class="active" type="button">Closed</button><button id="jawModeOpenHold" type="button">Open Hold</button><button id="jawModeTalk" type="button">Talk</button><button id="jawModePant" type="button">Pant</button><button id="jawModeBiteSnap" type="button">Bite Snap</button><button id="jawModeSnarlPulse" type="button">Snarl Pulse</button></div><div class="controlGrid" id="jawSettingsGrid" hidden><div class="compactSlider"><label for="jawOpenAngle">Jaw Open Angle <span id="jawOpenAngleValue">24°</span></label><input id="jawOpenAngle" type="range" min="0" max="50" step="1" value="24" /></div><div class="compactSlider"><label for="jawSpeed">Jaw Speed <span id="jawSpeedValue">1.00</span></label><input id="jawSpeed" type="range" min="0.1" max="3" step="0.05" value="1" /></div><div class="compactSlider"><label for="jawBlendAmount">Jaw Blend <span id="jawBlendAmountValue">100%</span></label><input id="jawBlendAmount" type="range" min="0" max="1" step="0.05" value="1" /></div><div class="compactSlider"><label for="jawPhaseOffset">Jaw Phase <span id="jawPhaseOffsetValue">0.00</span></label><input id="jawPhaseOffset" type="range" min="-3.14" max="3.14" step="0.1" value="0" /></div></div><div class="row"><button id="resetJawSettings" type="button">Reset Jaw Settings</button></div></div></section><section class="panel seamRepairPanel" id="seamRepairPanel"><h3>SEAM REPAIR</h3><p class="seamSubline">Applied to part-based renders only.</p><p class="seamSubline">Rebuilds on Generate Strip.</p><div class="toggleGroup" id="seamRepairEnabled"><button id="seamRepairOff" type="button" class="active">Disable Seam Repair</button><button id="seamRepairOn" type="button">Enable Seam Repair</button></div><div class="controlGrid"><div class="compactSlider"><label for="edgeBleedPx">Edge Bleed <span id="edgeBleedPxValue">1px</span></label><input id="edgeBleedPx" type="range" min="1" max="4" step="1" value="1" /></div><div class="compactSlider"><label for="edgeFeatherPx">Feather <span id="edgeFeatherPxValue">0.5px</span></label><input id="edgeFeatherPx" type="range" min="0" max="2" step="0.25" value="0.5" /></div><div class="compactSlider"><label for="jointOverlapPx">Joint Overlap <span id="jointOverlapPxValue">3px</span></label><input id="jointOverlapPx" type="range" min="2" max="12" step="1" value="3" /></div><div class="compactSlider"><label for="seamBlendStrength">Blend Strength <span id="seamBlendStrengthValue">25%</span></label><input id="seamBlendStrength" type="range" min="0" max="100" step="1" value="25" /></div></div><div class="toggleGroup" id="gapFillEnabled"><button id="gapFillOff" type="button">Gap Fill Off</button><button id="gapFillOn" type="button" class="active">Gap Fill On</button></div><div class="row"><button id="safeSeamDefaults" type="button">Safe Seam Defaults</button><button id="strongSeamDiagnostic" type="button">Strong Seam Diagnostic</button><button id="resetSeamSettings" type="button">Reset Seam Settings</button></div><div class="toggleGroup" id="seamRepairPreviewMode"><button id="seamPreviewRaw" type="button" class="active">Preview Raw</button><button id="seamPreviewProcessed" type="button">Preview Seam-Repaired</button></div><pre id="seamDebugReadout" class="seamSubline"></pre><p id="seamDeltaWarning" class="seamWarning" hidden></p></section></div><div class="row"><button id="resetIdleSettings" type="button">Reset idle settings</button><button id="resetWalkSettings" type="button">Reset walk settings</button><button id="resetAttackSettings" type="button">Reset attack settings</button><button id="resetCrawlSettings" type="button">Reset crawl settings</button><button id="resetQuadrupedSettings" type="button">Reset quadruped settings</button><button id="generateButton" class="primary">Generate Strip</button><button id="buildPartLayersButton" type="button">Build Part Layers</button><button id="exportSelectedPartButton" type="button">Export Selected Part PNG</button></div><div class="row"><label>Preview Mode<select id="previewMode"><option value="idle-strip">Idle Strip</option><option value="part-layer">Part Layer Preview</option><option value="composite-parts">Composite Parts Preview</option></select></label></div><section class="previewPanel"><h3>Preview</h3><canvas id="preview" width="1024" height="1024"></canvas></section></div>
   <div id="exportControls" hidden><div class="controls"><div class="row"><label>Frames<select id="frameCount"><option value="5">5</option><option value="6" selected>6</option></select></label><label>W<input id="cellWidth" type="number" min="64" step="64" value="640" /></label><label>H<input id="cellHeight" type="number" min="64" step="64" value="512" /></label></div><div class="presetRow" id="presetRow"></div><div class="row"><button id="generateButtonExport" class="primary" type="button">Generate Strip</button><button id="pngButton">Export PNG Strip</button><button id="gifButton">Export GIF Preview</button><button id="copyGifButton">Copy GIF Preview</button><button id="jsonButton">Export Metadata JSON</button></div><div class="row"><label>GIF Size<select id="gifSize"><option value="current">Current Game Frame Size</option><option value="small">Small Preview 320px wide</option><option value="medium" selected>Medium Preview 512px wide</option><option value="large">Large Preview 640px wide</option></select></label><label>GIF FPS<input id="gifFps" type="range" min="4" max="24" step="1" value="12" /><span id="gifFpsValue">12</span></label></div><section class="filenamePreview"><h3>Filename Preview</h3><div class="row"><label>Export Base Name<input id="exportBaseName" type="text" value="sprite_rig_export" /></label><button id="resetExportBaseName" type="button">Reset to Source Name</button></div><pre id="filenamePreview">Source: none\nBase: sprite_rig_export\nAnimation suffix: idle\nPNG: sprite_rig_export_idle.png\nJSON: sprite_rig_export_idle.json\nGIF: sprite_rig_export_idle_preview.gif</pre></section><button type="button">View Export Report</button><pre id="renderReport"></pre></div><details><summary>Source Quality</summary><pre id="sourceQuality">No source loaded.</pre></details></div><div id="shellError" class="shellError" hidden></div></section></div>`;
 
@@ -340,6 +340,7 @@ export function initApp(root: HTMLDivElement) {
     ensureTemplateParts(rigTemplate);
     syncRigTemplateUi();
     renderParts();
+    syncUnderpaintDiagnostics();
     scheduleWorkspaceRender();
     markStale();
   };
@@ -566,13 +567,24 @@ export function initApp(root: HTMLDivElement) {
       if (!part.visible || !part.maskCanvas || !hasMaskPixels(part.maskCanvas)) continue;
       const layer = document.createElement('canvas');
       layer.width = state.analysis.width; layer.height = state.analysis.height;
-      const layerCtx = layer.getContext('2d')!; layerCtx.drawImage(sourceCanvas,0,0); layerCtx.globalCompositeOperation = 'destination-in'; layerCtx.drawImage(part.maskCanvas,0,0); layerCtx.globalCompositeOperation = 'source-over';
+      const layerCtx = layer.getContext('2d')!;
+      if (part.layerType === 'underpaint_patch') {
+        layerCtx.clearRect(0, 0, layer.width, layer.height);
+        layerCtx.fillStyle = part.color;
+        layerCtx.fillRect(0, 0, layer.width, layer.height);
+        layerCtx.globalCompositeOperation = 'destination-in';
+        layerCtx.drawImage(part.maskCanvas, 0, 0);
+        layerCtx.globalCompositeOperation = 'source-over';
+      } else {
+        layerCtx.drawImage(sourceCanvas,0,0); layerCtx.globalCompositeOperation = 'destination-in'; layerCtx.drawImage(part.maskCanvas,0,0); layerCtx.globalCompositeOperation = 'source-over';
+      }
       rawExtractedPartLayers.set(part.name, layer);
     }
     rebuildProcessedPartLayers();
     updateSeamDebugReadout();
     if (!rawExtractedPartLayers.has(selectedPartLayerName)) selectedPartLayerName = parts[0]?.name ?? selectedPartLayerName;
     setStatus(`Built ${rawExtractedPartLayers.size} part layer(s).`);
+    syncUnderpaintDiagnostics();
   };
   const getRecommendedPreset = (): { label: string; width: number; height: number } => {
     return { label: preferredProductionPresetLabel, width: 3072, height: 3072 };
@@ -610,7 +622,44 @@ export function initApp(root: HTMLDivElement) {
     scheduleWorkspaceRender();
   };
 
-  const getTransform = (name: string) => {
+  
+  const countAlphaPixels = (canvas: HTMLCanvasElement | null | undefined) => {
+    if (!canvas) return 0;
+    const data = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data;
+    let count = 0;
+    for (let i = 3; i < data.length; i += 4) if (data[i] > 0) count += 1;
+    return count;
+  };
+  const getEffectivePartTransform = (part: MaskPart) => part.layerType === 'underpaint_patch' ? getTransform(part.parentPartName ?? '') : getTransform(part.name);
+  const getEffectivePartPivot = (part: MaskPart, layer: HTMLCanvasElement) => {
+    if (part.layerType === 'underpaint_patch' && part.parentPartName) return pivots.get(part.parentPartName) ?? { x: layer.width / 2, y: layer.height / 2 };
+    return pivots.get(part.name) ?? { x: layer.width / 2, y: layer.height / 2 };
+  };
+  const syncUnderpaintDiagnostics = () => {
+    const readout = q<HTMLPreElement>('underpaintDiagnostics');
+    const drawOrder = getCompositePartsInDrawOrder();
+    const lines: string[] = [];
+    for (const patch of parts.filter((p) => p.layerType === 'underpaint_patch')) {
+      const alphaPixelCount = countAlphaPixels(patch.maskCanvas);
+      const includedInBuildLayers = rawExtractedPartLayers.has(patch.name);
+      const includedInComposite = patch.visible && includedInBuildLayers;
+      lines.push([
+        `patch name: ${patch.name}`,
+        `parentPartName: ${patch.parentPartName ?? '—'}`,
+        `visible: ${patch.visible}`,
+        `hasPaintPixels: ${alphaPixelCount > 0}`,
+        `alphaPixelCount: ${alphaPixelCount}`,
+        `includedInBuildLayers: ${includedInBuildLayers}`,
+        `includedInComposite: ${includedInComposite}`,
+        `drawOrder index: ${drawOrder.findIndex((p) => p.name === patch.name)}`
+      ].join(' | '));
+      if (alphaPixelCount === 0) lines.push('Patch is empty. Paint on the patch or generate a test fill.');
+      if (!includedInBuildLayers) lines.push('Underpaint patch exists but has no painted pixels.');
+    }
+    readout.textContent = lines.length ? lines.join('\n') : 'No underpaint patches yet.';
+  };
+
+const getTransform = (name: string) => {
     if (!partTransforms.has(name)) partTransforms.set(name, { rotationDeg: 0, translateX: 0, translateY: 0, scaleX: 1, scaleY: 1 });
     return partTransforms.get(name)!;
   };
@@ -858,7 +907,7 @@ const seamJointPairs = new Set(['torso:front_arm','torso:rear_arm','torso:front_
             };
           }
         }
-        const role = part.name;
+        const role = part.layerType === 'underpaint_patch' ? (part.parentPartName ?? part.name) : part.name;
         const isQuadFrontLeg = role === 'near_front_leg' || role === 'far_front_leg';
         const isQuadRearLeg = role === 'near_rear_leg' || role === 'far_rear_leg';
         let bobY = 0; let rot = 0; let sx = 1; let sy = 1; let driftX = 0;
@@ -1102,7 +1151,7 @@ const seamJointPairs = new Set(['torso:front_arm','torso:rear_arm','torso:front_
   const startPreviewLoop = () => {
     if (previewRaf) cancelAnimationFrame(previewRaf);
     let lastTs = 0; let frame = 0;
-    const tick = (ts: number) => { const previewStart = performance.now(); const ctx = preview.getContext('2d')!; ctx.clearRect(0,0,preview.width,preview.height); if (previewMode === 'idle-strip') { if (stripCanvas && !stalePreview) { if (ts - lastTs > 180) { frame = (frame + 1) % state.frameCount; lastTs = ts; } const sx = frame * state.cellWidth; ctx.drawImage(stripCanvas, sx, 0, state.cellWidth, state.cellHeight, 0, 0, preview.width, preview.height); } } else { const scale = state.analysis ? Math.min(preview.width / state.analysis.width, preview.height / state.analysis.height, 1) : 1; const drawW = state.analysis ? state.analysis.width * scale : preview.width; const drawH = state.analysis ? state.analysis.height * scale : preview.height; const offsetX = (preview.width - drawW) / 2; const offsetY = (preview.height - drawH) / 2; if (previewMode === 'part-layer') { const selected = (seamRepairPreviewMode ? processedPartLayers : rawExtractedPartLayers).get(selectedPartLayerName); if (selected) ctx.drawImage(selected, offsetX, offsetY, drawW, drawH); } else if (previewMode === 'composite-parts') { if (!rawExtractedPartLayers.size) { ctx.fillStyle = '#b8d3ea'; ctx.font = '16px sans-serif'; ctx.fillText('Build Part Layers first.', 24, 40); } for (const part of getCompositePartsInDrawOrder()) { if (!part.visible) continue; const layer = (seamRepairPreviewMode ? processedPartLayers : rawExtractedPartLayers).get(part.name); if (!layer) continue; const t = getTransform(part.name); const pivot = pivots.get(part.name) ?? { x: layer.width / 2, y: layer.height / 2 }; const px = offsetX + pivot.x * scale; const py = offsetY + pivot.y * scale; ctx.save(); ctx.translate(px + t.translateX * scale, py + t.translateY * scale); ctx.rotate((t.rotationDeg * Math.PI) / 180); ctx.scale(t.scaleX, t.scaleY); ctx.drawImage(layer, -pivot.x * scale, -pivot.y * scale, drawW, drawH); if (part.name === activePart && toolMode === 'transform-part') { ctx.strokeStyle = '#ffd166'; ctx.lineWidth = 2; ctx.strokeRect(-pivot.x * scale, -pivot.y * scale, drawW, drawH); } ctx.restore(); } } } perfStats.previewRenderMs = performance.now() - previewStart; previewRaf = requestAnimationFrame(tick); };
+    const tick = (ts: number) => { const previewStart = performance.now(); const ctx = preview.getContext('2d')!; ctx.clearRect(0,0,preview.width,preview.height); if (previewMode === 'idle-strip') { if (stripCanvas && !stalePreview) { if (ts - lastTs > 180) { frame = (frame + 1) % state.frameCount; lastTs = ts; } const sx = frame * state.cellWidth; ctx.drawImage(stripCanvas, sx, 0, state.cellWidth, state.cellHeight, 0, 0, preview.width, preview.height); } } else { const scale = state.analysis ? Math.min(preview.width / state.analysis.width, preview.height / state.analysis.height, 1) : 1; const drawW = state.analysis ? state.analysis.width * scale : preview.width; const drawH = state.analysis ? state.analysis.height * scale : preview.height; const offsetX = (preview.width - drawW) / 2; const offsetY = (preview.height - drawH) / 2; if (previewMode === 'part-layer') { const selected = (seamRepairPreviewMode ? processedPartLayers : rawExtractedPartLayers).get(selectedPartLayerName); if (selected) ctx.drawImage(selected, offsetX, offsetY, drawW, drawH); } else if (previewMode === 'composite-parts') { if (!rawExtractedPartLayers.size) { ctx.fillStyle = '#b8d3ea'; ctx.font = '16px sans-serif'; ctx.fillText('Build Part Layers first.', 24, 40); } for (const part of getCompositePartsInDrawOrder()) { if (!part.visible) continue; const layer = (seamRepairPreviewMode ? processedPartLayers : rawExtractedPartLayers).get(part.name); if (!layer) continue; const t = getEffectivePartTransform(part); const pivot = getEffectivePartPivot(part, layer); const px = offsetX + pivot.x * scale; const py = offsetY + pivot.y * scale; ctx.save(); ctx.translate(px + t.translateX * scale, py + t.translateY * scale); ctx.rotate((t.rotationDeg * Math.PI) / 180); ctx.scale(t.scaleX, t.scaleY); ctx.drawImage(layer, -pivot.x * scale, -pivot.y * scale, drawW, drawH); if (part.name === activePart && toolMode === 'transform-part') { ctx.strokeStyle = '#ffd166'; ctx.lineWidth = 2; ctx.strokeRect(-pivot.x * scale, -pivot.y * scale, drawW, drawH); } ctx.restore(); } } } perfStats.previewRenderMs = performance.now() - previewStart; previewRaf = requestAnimationFrame(tick); };
     previewRaf = requestAnimationFrame(tick);
   };
 
@@ -1425,18 +1474,44 @@ const syncIdleReadout = () => {
     const name = nextPatchNameForParent(parent);
     const patch: MaskPart = { id: `${name}_${Date.now()}`, name, visible: true, color: '#ff7a90', maskCanvas: document.createElement('canvas'), layerType: 'underpaint_patch', parentPartName: parent };
     patch.maskCanvas!.width = state.analysis.width; patch.maskCanvas!.height = state.analysis.height;
-    parts.push(patch); activePart = patch.name; selectedPartLayerName = patch.name; markPartDirty(patch.name); renderParts(); scheduleWorkspaceRender();
+    parts.push(patch); activePart = patch.name; selectedPartLayerName = patch.name; markPartDirty(patch.name); renderParts(); scheduleWorkspaceRender(); syncUnderpaintDiagnostics();
     q<HTMLInputElement>('underpaintName').value = patch.name;
   });
   q<HTMLButtonElement>('renameUnderpaintPatch').addEventListener('click', () => {
     const p = parts.find((x) => x.name === activePart && x.layerType === 'underpaint_patch'); if (!p) return;
     const next = sanitizeBaseName(q<HTMLInputElement>('underpaintName').value || p.name); if (!next) return;
-    p.name = next; activePart = next; selectedPartLayerName = next; renderParts(); scheduleWorkspaceRender();
+    p.name = next; activePart = next; selectedPartLayerName = next; renderParts(); scheduleWorkspaceRender(); syncUnderpaintDiagnostics();
   });
   q<HTMLButtonElement>('deleteUnderpaintPatch').addEventListener('click', () => {
     const idx = parts.findIndex((x) => x.name === activePart && x.layerType === 'underpaint_patch'); if (idx < 0) return;
-    parts.splice(idx, 1); activePart = parts[0]?.name ?? activePart; selectedPartLayerName = activePart; renderParts(); scheduleWorkspaceRender(); markStale();
+    parts.splice(idx, 1); activePart = parts[0]?.name ?? activePart; selectedPartLayerName = activePart; renderParts(); scheduleWorkspaceRender(); markStale(); syncUnderpaintDiagnostics();
   });
+  
+  q<HTMLButtonElement>('fillUnderpaintPatch').addEventListener('click', () => {
+    const p = parts.find((x) => x.name === activePart && x.layerType === 'underpaint_patch'); if (!p?.maskCanvas) return;
+    pushUndoSnapshot(p.name, p.maskCanvas);
+    const ctx = p.maskCanvas.getContext('2d')!;
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#00e5ffcc';
+    ctx.fillRect(0, 0, p.maskCanvas.width, p.maskCanvas.height);
+    ctx.restore();
+    markPartDirty(p.name);
+    renderParts();
+    scheduleWorkspaceRender();
+    setStatus(`Filled ${p.name} with test color. Build Part Layers to verify composite/export.`);
+    syncUnderpaintDiagnostics();
+  });
+  q<HTMLButtonElement>('clearUnderpaintPatch').addEventListener('click', () => {
+    const p = parts.find((x) => x.name === activePart && x.layerType === 'underpaint_patch'); if (!p?.maskCanvas) return;
+    pushUndoSnapshot(p.name, p.maskCanvas);
+    p.maskCanvas.getContext('2d')!.clearRect(0, 0, p.maskCanvas.width, p.maskCanvas.height);
+    markPartDirty(p.name);
+    renderParts();
+    scheduleWorkspaceRender();
+    syncUnderpaintDiagnostics();
+  });
+
   q<HTMLSelectElement>('underpaintParent').addEventListener('change', () => {
     const p = parts.find((x) => x.name === activePart && x.layerType === 'underpaint_patch'); if (!p) return;
     p.parentPartName = q<HTMLSelectElement>('underpaintParent').value;
@@ -1445,5 +1520,6 @@ const syncIdleReadout = () => {
   });
 
   syncUnderpaintParents();
+  syncUnderpaintDiagnostics();
   syncIdleReadout(); syncJawUi(); syncShellModeControls(); renderParts(); scheduleWorkspaceRender(); refreshSaveProjectEnabled(); startPreviewLoop(); selfCheck();
 }
