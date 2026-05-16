@@ -19,6 +19,7 @@
 * { box-sizing: border-box; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 html, body { margin: 0; background: radial-gradient(circle at 25% -20%, #2a1452 0%, var(--bg-0) 42%, #03050a 100%); color: var(--text); }
 #app { max-width: 1280px; margin: 0 auto; padding: 8px; }
+body { overflow-x: hidden; }
 .shell { display: flex; flex-direction: column; gap: 8px; }
 .panel {
   background: linear-gradient(180deg, var(--bg-2), var(--bg-1));
@@ -74,6 +75,20 @@ label { display: flex; flex-direction: column; gap: 4px; color: #c7d5f0; }
 details { padding: 10px; }
 .shellError { border: 1px solid #ff4a67; background: #4d1420; color: #ffcad4; border-radius: 8px; padding: 8px; }
 input[type="range"] { accent-color: var(--accent); }
+.seamSubline,
+.partInfo,
+.tipLine,
+pre,
+#renderReport {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+pre,
+#renderReport {
+  white-space: pre-wrap;
+  overflow-x: hidden;
+}
 @media (max-width: 980px) {
   .topBar, .statusRow, .workspaceShell { grid-template-columns: 1fr; }
   .projectButtons { grid-template-columns: 1fr; }

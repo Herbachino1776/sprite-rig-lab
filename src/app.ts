@@ -639,6 +639,13 @@ export function initApp(root: HTMLDivElement) {
     const readout = q<HTMLPreElement>('underpaintDiagnostics');
     const drawOrder = getCompositePartsInDrawOrder();
     const lines: string[] = [];
+    const activePatch = parts.find((p) => p.name === activePart && p.layerType === 'underpaint_patch');
+    if (activePatch) {
+      lines.push(`Editing underpaint patch: ${activePatch.name}. Paint only where hidden body should be restored.`);
+      if (countAlphaPixels(activePatch.maskCanvas) === 0) {
+        lines.push('Patch is empty. Paint patch pixels or use Fill Patch Test Color for a small diagnostic stamp.');
+      }
+    }
     for (const patch of parts.filter((p) => p.layerType === 'underpaint_patch')) {
       const alphaPixelCount = countAlphaPixels(patch.maskCanvas);
       const includedInBuildLayers = rawExtractedPartLayers.has(patch.name);
@@ -653,10 +660,44 @@ export function initApp(root: HTMLDivElement) {
         `includedInComposite: ${includedInComposite}`,
         `drawOrder index: ${drawOrder.findIndex((p) => p.name === patch.name)}`
       ].join(' | '));
-      if (alphaPixelCount === 0) lines.push('Patch is empty. Paint on the patch or generate a test fill.');
       if (!includedInBuildLayers) lines.push('Underpaint patch exists but has no painted pixels.');
     }
     readout.textContent = lines.length ? lines.join('\n') : 'No underpaint patches yet.';
+  };
+
+  const fillLassoSelection = (ctx: CanvasRenderingContext2D, fillStyle: string) => {
+    if (lassoPoints.length < 3) return false;
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = fillStyle;
+    ctx.beginPath();
+    ctx.moveTo(lassoPoints[0]!.x, lassoPoints[0]!.y);
+    for (let i = 1; i < lassoPoints.length; i += 1) ctx.lineTo(lassoPoints[i]!.x, lassoPoints[i]!.y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    return true;
+  };
+
+  const stampDiagnosticPatch = (patch: MaskPart, ctx: CanvasRenderingContext2D, fillStyle: string) => {
+    if (!state.analysis || !patch.maskCanvas) return false;
+    const parentMask = patch.parentPartName ? parts.find((entry) => entry.name === patch.parentPartName)?.maskCanvas : null;
+    const parentBounds = parentMask ? getAlphaBoundsCached(parentMask) : null;
+    const fallbackBounds = state.analysis.sourceBounds;
+    const bounds = parentBounds && parentBounds.width > 0 && parentBounds.height > 0 ? parentBounds : fallbackBounds;
+    const centerX = Math.round(('x' in bounds ? bounds.x : bounds.minX) + bounds.width / 2);
+    const centerY = Math.round(('y' in bounds ? bounds.y : bounds.minY) + bounds.height / 2);
+    const radius = Math.max(16, Math.min(32, Math.floor(Math.min(state.analysis.width, state.analysis.height) * 0.02)));
+    const x = clamp(centerX, radius, patch.maskCanvas.width - radius);
+    const y = clamp(centerY, radius, patch.maskCanvas.height - radius);
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = fillStyle;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    return true;
   };
 
 const getTransform = (name: string) => {
@@ -1491,15 +1532,25 @@ const syncIdleReadout = () => {
     const p = parts.find((x) => x.name === activePart && x.layerType === 'underpaint_patch'); if (!p?.maskCanvas) return;
     pushUndoSnapshot(p.name, p.maskCanvas);
     const ctx = p.maskCanvas.getContext('2d')!;
-    ctx.save();
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.fillStyle = '#00e5ffcc';
-    ctx.fillRect(0, 0, p.maskCanvas.width, p.maskCanvas.height);
-    ctx.restore();
+    const hasExistingPatchPixels = countAlphaPixels(p.maskCanvas) > 0;
+    const testFillStyle = '#ff4fb399';
+    let fillMode: 'existing-pixels' | 'lasso' | 'diagnostic-stamp' = 'diagnostic-stamp';
+    if (hasExistingPatchPixels) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'source-in';
+      ctx.fillStyle = testFillStyle;
+      ctx.fillRect(0, 0, p.maskCanvas.width, p.maskCanvas.height);
+      ctx.restore();
+      fillMode = 'existing-pixels';
+    } else if (fillLassoSelection(ctx, testFillStyle)) {
+      fillMode = 'lasso';
+    } else {
+      stampDiagnosticPatch(p, ctx, testFillStyle);
+    }
     markPartDirty(p.name);
     renderParts();
     scheduleWorkspaceRender();
-    setStatus(`Filled ${p.name} with test color. Build Part Layers to verify composite/export.`);
+    setStatus(`Filled ${p.name} with bounded test color (${fillMode}). Build Part Layers to verify composite/export.`);
     syncUnderpaintDiagnostics();
   });
   q<HTMLButtonElement>('clearUnderpaintPatch').addEventListener('click', () => {
