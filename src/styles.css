@@ -102,3 +102,10 @@ pre,
 .toggleGroup button { min-height: 44px; }
 .toggleGroup button.active { background: linear-gradient(140deg, #6f39ea, #8a4bff 40%, #4b2ca9); border-color: #8e63ff; }
 .seamWarning { margin: 8px 0 0; color: #ffcf8b; font-size: 12px; }
+
+.animatePrimaryActions { align-items: flex-end; }
+.animatePrimaryActions > * { flex: 1 1 180px; }
+.animSettingsCard h3 { margin: 0 0 8px; color: #c897ff; letter-spacing: .04em; }
+#animateControls .previewPanel canvas { max-height: min(42vh, 360px); object-fit: contain; }
+.seamRepairPanel summary { cursor: pointer; font-weight: 700; color: #c897ff; letter-spacing: .04em; }
+.seamRepairPanel[open] summary { margin-bottom: 8px; }
