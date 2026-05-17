@@ -209,12 +209,14 @@ export function initApp(root: HTMLDivElement) {
   const defaultLayerOrder: string[] = [...defaultPartNames];
   const legacyBadDefaultLayerOrder: string[] = ['rear_arm', 'rear_leg', 'torso', 'head', 'front_arm', 'front_leg', 'tail', 'extra_01', 'horns'];
   const legacyDefaultLayerOrder: string[] = ['rear_leg', 'rear_arm', 'torso', 'head', 'front_arm', 'front_leg', 'tail', 'extra_01', 'horns'];
+  const legacyBipedCanonicalOrderWithRearArmUnderTorso: string[] = ['front_arm', 'front_leg', 'rear_leg', 'rear_arm', 'torso', 'head', 'lower_jaw', 'extra_01', 'tail', 'horns'];
 
   const normalizeLayerOrder = (layerOrder: string[] | undefined): string[] => {
     if (!layerOrder?.length) return [...defaultLayerOrder];
     if (
       (layerOrder.length === legacyBadDefaultLayerOrder.length && layerOrder.every((name, index) => name === legacyBadDefaultLayerOrder[index]))
       || (layerOrder.length === legacyDefaultLayerOrder.length && layerOrder.every((name, index) => name === legacyDefaultLayerOrder[index]))
+      || (layerOrder.length === legacyBipedCanonicalOrderWithRearArmUnderTorso.length && layerOrder.every((name, index) => name === legacyBipedCanonicalOrderWithRearArmUnderTorso[index]))
     ) {
       return [...defaultLayerOrder];
     }
