@@ -229,14 +229,23 @@ export function initApp(root: HTMLDivElement) {
   const getCompositePartsInDrawOrder = (): MaskPart[] => {
     const rank = new Map<string, number>();
     defaultLayerOrder.forEach((name, index) => rank.set(name, index));
-    const score = (part: MaskPart) => {
-      if (part.layerType === 'underpaint_patch') {
-        const parentRank = rank.get(part.parentPartName ?? '') ?? Number.MAX_SAFE_INTEGER / 2;
-        return parentRank - 0.1;
-      }
-      return rank.get(part.name) ?? Number.MAX_SAFE_INTEGER;
+    const visibleParts = parts.filter((part) => part.visible);
+    const underpaintParts = visibleParts.filter((part) => part.layerType === 'underpaint_patch');
+    const normalParts = visibleParts.filter((part) => part.layerType !== 'underpaint_patch');
+    const stableSortByParentThenCreation = (a: MaskPart, b: MaskPart) => {
+      const aParentRank = rank.get(a.parentPartName ?? '') ?? Number.MAX_SAFE_INTEGER;
+      const bParentRank = rank.get(b.parentPartName ?? '') ?? Number.MAX_SAFE_INTEGER;
+      if (aParentRank !== bParentRank) return aParentRank - bParentRank;
+      return parts.indexOf(a) - parts.indexOf(b);
     };
-    return [...parts].sort((a, b) => score(a) - score(b));
+    underpaintParts.sort(stableSortByParentThenCreation);
+    normalParts.sort((a, b) => {
+      const aRank = rank.get(a.name) ?? Number.MAX_SAFE_INTEGER;
+      const bRank = rank.get(b.name) ?? Number.MAX_SAFE_INTEGER;
+      if (aRank !== bRank) return aRank - bRank;
+      return parts.indexOf(a) - parts.indexOf(b);
+    });
+    return [...underpaintParts, ...normalParts];
   };
 
   const applySavedLayerOrder = (layerOrder: string[] | undefined) => {
@@ -659,6 +668,11 @@ export function initApp(root: HTMLDivElement) {
         lines.push('Patch is empty. Paint using Source Clone Underpaint or use Debug Fill Patch for diagnostics only.');
       }
     }
+    const underpaintNames = drawOrder.filter((part) => part.layerType === 'underpaint_patch').map((part) => part.name);
+    const normalNames = drawOrder.filter((part) => part.layerType !== 'underpaint_patch').map((part) => part.name);
+    lines.push(`effective render order:`);
+    lines.push(`underpaint: ${underpaintNames.length ? underpaintNames.join(', ') : '(none)'}`);
+    lines.push(`then: ${normalNames.length ? normalNames.join(' → ') : '(none)'}`);
     for (const patch of parts.filter((p) => p.layerType === 'underpaint_patch')) {
       const alphaPixelCount = countAlphaPixels(patch.maskCanvas);
       const includedInBuildLayers = rawExtractedPartLayers.has(patch.name);
