@@ -10,7 +10,7 @@ export type MaskPart = {
   parentPartName?: string;
 };
 
-export const defaultPartNames = ['front_arm', 'front_leg', 'rear_leg', 'rear_arm', 'torso', 'head', 'lower_jaw', 'extra_01', 'tail', 'horns'] as const;
+export const defaultPartNames = ['front_arm', 'front_leg', 'rear_leg', 'torso', 'rear_arm', 'head', 'lower_jaw', 'extra_01', 'tail', 'horns'] as const;
 export const globularPartNames = ['base', 'torso', 'head', 'lower_jaw', 'front_arm', 'rear_arm', 'extra_01', 'tail'] as const;
 export const quadrupedPartNames = ['far_rear_leg', 'far_front_leg', 'torso', 'neck', 'head', 'lower_jaw', 'near_rear_leg', 'near_front_leg', 'tail', 'extra_01', 'horns'] as const;
 export type RigTemplate = 'biped' | 'globular' | 'quadruped';
