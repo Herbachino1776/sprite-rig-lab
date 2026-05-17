@@ -29,6 +29,7 @@ export type ProjectSaveData = {
   sourceFileName?: string;
   sourceBaseName?: string;
   exportBaseNameOverride?: string;
+  exportBaseName?: string;
   sourceImageDataUrl: string;
   sourceImageWidth: number;
   sourceImageHeight: number;
