@@ -17,6 +17,20 @@ export type RigTemplate = 'biped' | 'globular' | 'quadruped';
 
 export type JawMode = 'closed' | 'open-hold' | 'talk' | 'pant' | 'bite-snap' | 'snarl-pulse';
 export type JawSettings = { openAngle: number; speed: number; blendAmount: number; phaseOffset: number; chatterAmount: number; pantRhythm: number; biteSnapStrength: number };
+export type WeaponLayerMode = 'behind-anchor' | 'above-anchor' | 'above-all';
+export type WeaponAttachment = {
+  id: string;
+  name: string;
+  sourceFileName: string;
+  imageDataUrl: string;
+  anchorPartName: string;
+  localOffsetX: number;
+  localOffsetY: number;
+  rotationDeg: number;
+  scale: number;
+  visible: boolean;
+  layerMode: WeaponLayerMode;
+};
 
 export type ProjectState = {
   frameCount: 5 | 6;
@@ -107,6 +121,7 @@ export type ProjectSaveData = {
   jawSettings?: JawSettings;
   jawPivot?: { x: number; y: number };
   lipLine?: { y: number };
+  weapons?: WeaponAttachment[];
 };
 
 export const defaultState: ProjectState = { frameCount: 6, cellWidth: 3072, cellHeight: 3072, analysis: null };
