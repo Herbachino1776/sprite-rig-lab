@@ -23,7 +23,8 @@ type SeamRepairSettings = { enabled: boolean; edgeBleedPx: number; edgeFeatherPx
 type SeamRepairDebug = { processedLayersBuilt: boolean; processedLayerCount: number; rawLayerCount: number; lastProcessedAt: number; activeRenderSource: 'raw' | 'processed'; seamDeltaPixels: number; averageLuminanceDelta: number; alphaDeltaPixels: number };
 type PerfStats = { buildPartLayersMs: number; generateStripTotalMs: number; perFrameRenderMs: number; alphaBoundsAnalysisMs: number; gameReadyNormalizationMs: number; seamRepairProcessingMs: number; seamDeltaComparisonMs: number; gifEncodeMs: number; previewRenderMs: number; slowestStep: string; };
 type UndoEntry = { partName: string; imageData: ImageData };
-type ExportMeta = { animationMode: AnimationMode; rigTemplate: RigTemplate; partBasedIdle: boolean; idleSettings: IdleSettings; walkSettings: WalkSettings; attackSettings: AttackSettings; globularCrawlSettings: GlobularCrawlSettings; quadrupedWalkSettings: QuadrupedWalkSettings; jawAnimationEnabled: boolean; jawMode: JawMode; jawSettings: JawSettings; seamRepairSettings: SeamRepairSettings; frameCount: number; cellWidth: number; cellHeight: number; stripWidth: number; stripHeight: number; floorY: number; renderScale: number; selectedPresetLabel: string; recommendedPresetLabel: string; defaultPresetLabel: string; defaultCellWidth: number; defaultCellHeight: number; warnings: string[]; bleedRisk: boolean; frameBounds: FrameBoundsReport[]; motionEnvelope: MotionEnvelope | null; motionSafeScale: number; clippingPrevented: boolean; recommendedCellWidth: number; recommendedCellHeight: number; leftMarginMin: number; rightMarginMin: number; topMarginMin: number; bottomMarginMin: number; processedLayersUsed: boolean; seamRepairWarnings: string[]; seamRepairEnabled: boolean; activeRenderSource: 'raw' | 'processed'; processedLayerCount: number; seamDeltaPixels: number; averageLuminanceDelta: number; exportProfileLabel?: string; gameReadyProfile?: boolean; baselineY?: number; horizontalCentered?: boolean; horizontalBiasApplied?: boolean; gameReadyCenterBiasX?: number; verticallyCentered?: boolean; transparentBackground?: boolean; frameWidth?: number; frameHeight?: number; sharedEnvelope?: AlphaBounds | null; gameReadyScale?: number; minLeftPadding?: number; minRightPadding?: number; minTopPadding?: number; gifWidth?: number; gifHeight?: number; gifFrameCount?: number; gifFps?: number; gifFrameDelayMs?: number; gifLoop?: boolean; jawPivot?: Point; lowerJawPresent?: boolean; };
+type ExportMetaWeapon = { id: string; name: string; sourceFileName: string; anchorPartName: string; layerMode: WeaponLayerMode; localOffsetX: number; localOffsetY: number; rotationDeg: number; scale: number; visible: boolean; rendered: boolean };
+type ExportMeta = { animationMode: AnimationMode; rigTemplate: RigTemplate; partBasedIdle: boolean; idleSettings: IdleSettings; walkSettings: WalkSettings; attackSettings: AttackSettings; globularCrawlSettings: GlobularCrawlSettings; quadrupedWalkSettings: QuadrupedWalkSettings; jawAnimationEnabled: boolean; jawMode: JawMode; jawSettings: JawSettings; seamRepairSettings: SeamRepairSettings; frameCount: number; cellWidth: number; cellHeight: number; stripWidth: number; stripHeight: number; floorY: number; renderScale: number; selectedPresetLabel: string; recommendedPresetLabel: string; defaultPresetLabel: string; defaultCellWidth: number; defaultCellHeight: number; warnings: string[]; bleedRisk: boolean; frameBounds: FrameBoundsReport[]; motionEnvelope: MotionEnvelope | null; motionSafeScale: number; clippingPrevented: boolean; recommendedCellWidth: number; recommendedCellHeight: number; leftMarginMin: number; rightMarginMin: number; topMarginMin: number; bottomMarginMin: number; processedLayersUsed: boolean; seamRepairWarnings: string[]; seamRepairEnabled: boolean; activeRenderSource: 'raw' | 'processed'; processedLayerCount: number; seamDeltaPixels: number; averageLuminanceDelta: number; weapons: ExportMetaWeapon[]; renderedWeaponsCount: number; weaponRenderWarnings: string[]; exportProfileLabel?: string; gameReadyProfile?: boolean; baselineY?: number; horizontalCentered?: boolean; horizontalBiasApplied?: boolean; gameReadyCenterBiasX?: number; verticallyCentered?: boolean; transparentBackground?: boolean; frameWidth?: number; frameHeight?: number; sharedEnvelope?: AlphaBounds | null; gameReadyScale?: number; minLeftPadding?: number; minRightPadding?: number; minTopPadding?: number; gifWidth?: number; gifHeight?: number; gifFrameCount?: number; gifFps?: number; gifFrameDelayMs?: number; gifLoop?: boolean; jawPivot?: Point; lowerJawPresent?: boolean; };
 type PreviewMode = 'idle-strip' | 'part-layer' | 'composite-parts';
 type ShellMode = 'mask' | 'rig' | 'animate' | 'export';
 type MaskStats = { bounds: { minX: number; maxX: number; minY: number; maxY: number; width: number; height: number }; area: number; centroid: Point; bottomCenter: Point; touchesFloor: boolean; warnings: string[] };
@@ -1027,6 +1028,53 @@ const seamJointPairs = new Set(['torso:front_arm','torso:rear_arm','torso:front_
     const safePaddingYPercent = 0.06;
     const marginWarnThreshold = state.cellWidth * 0.05;
     const compileWarnings = [...plan.warnings];
+    const weaponRenderWarnings = new Set<string>();
+    const weaponRenderedIds = new Set<string>();
+    const drawWeaponForRole = (frameCtx: CanvasRenderingContext2D, role: string, anchorPivot: Point, driftX: number, bobY: number, rotDeg: number, sx: number, sy: number, renderScale: number, pass: 'before' | 'after') => {
+      for (const weapon of weapons) {
+        if (!weapon.visible || weapon.anchorPartName !== role) continue;
+        const layerCheck = pass === 'before' ? weapon.layerMode === 'behind-anchor' : weapon.layerMode === 'above-anchor';
+        if (!layerCheck) continue;
+        const weaponImage = weaponImages.get(weapon.id);
+        if (!weaponImage) continue;
+        weaponRenderedIds.add(weapon.id);
+        frameCtx.save();
+        frameCtx.translate(state.cellWidth / 2, plan.baseFloor);
+        frameCtx.scale(renderScale, renderScale);
+        frameCtx.translate(anchorPivot.x + driftX, anchorPivot.y + bobY - state.analysis!.floorY);
+        frameCtx.rotate((rotDeg * Math.PI) / 180);
+        frameCtx.scale(sx, sy);
+        frameCtx.translate(weapon.localOffsetX, weapon.localOffsetY);
+        frameCtx.rotate((weapon.rotationDeg * Math.PI) / 180);
+        frameCtx.scale(weapon.scale, weapon.scale);
+        frameCtx.drawImage(weaponImage, -weaponImage.width / 2, -weaponImage.height / 2);
+        frameCtx.restore();
+      }
+    };
+    const drawAboveAllWeapons = (frameCtx: CanvasRenderingContext2D, renderScale: number, roleTransforms: Map<string, { pivot: Point; driftX: number; bobY: number; rotDeg: number; sx: number; sy: number }>) => {
+      for (const weapon of weapons) {
+        if (!weapon.visible || weapon.layerMode !== 'above-all') continue;
+        const anchorTransform = roleTransforms.get(weapon.anchorPartName);
+        if (!anchorTransform) {
+          weaponRenderWarnings.add('Weapon anchor part is missing from built layers.');
+          continue;
+        }
+        const weaponImage = weaponImages.get(weapon.id);
+        if (!weaponImage) continue;
+        weaponRenderedIds.add(weapon.id);
+        frameCtx.save();
+        frameCtx.translate(state.cellWidth / 2, plan.baseFloor);
+        frameCtx.scale(renderScale, renderScale);
+        frameCtx.translate(anchorTransform.pivot.x + anchorTransform.driftX, anchorTransform.pivot.y + anchorTransform.bobY - state.analysis!.floorY);
+        frameCtx.rotate((anchorTransform.rotDeg * Math.PI) / 180);
+        frameCtx.scale(anchorTransform.sx, anchorTransform.sy);
+        frameCtx.translate(weapon.localOffsetX, weapon.localOffsetY);
+        frameCtx.rotate((weapon.rotationDeg * Math.PI) / 180);
+        frameCtx.scale(weapon.scale, weapon.scale);
+        frameCtx.drawImage(weaponImage, -weaponImage.width / 2, -weaponImage.height / 2);
+        frameCtx.restore();
+      }
+    };
     const drawFrame = (frameIndex: number, renderScale: number) => {
       const frameStart = performance.now();
       frameCtx.clearRect(0, 0, state.cellWidth, state.cellHeight);
@@ -1040,6 +1088,7 @@ const seamJointPairs = new Set(['torso:front_arm','torso:rear_arm','torso:front_
       const jawOverlayDeg = getJawOverlayRotationDeg(frameIndex);
       const phase = (frameIndex / state.frameCount) * Math.PI * 2;
       const walkPhase = (frameIndex / state.frameCount) * Math.PI * 2;
+      const roleTransforms = new Map<string, { pivot: Point; driftX: number; bobY: number; rotDeg: number; sx: number; sy: number }>();
       for (const part of getCompositePartsInDrawOrder()) {
         if (!part.visible) continue;
         const layer = activeLayers.get(part.name);
@@ -1141,6 +1190,8 @@ const seamJointPairs = new Set(['torso:front_arm','torso:rear_arm','torso:front_
         else if (role === 'front_arm' || role === 'rear_arm' || role === 'tail' || role === 'extra_01') { bobY = Math.sin(phase + 0.8) * 1.6 * idleSettings.armDrift * intensity; driftX = Math.sin(phase + 0.4) * 1.2 * idleSettings.armDrift * intensity; rot = Math.sin(phase + 0.2) * 1.8 * idleSettings.armDrift * intensity; }
         else if (role === 'front_leg' || role === 'rear_leg') { bobY = Math.sin(phase) * 0.35 * intensity; rot = Math.sin(phase + 0.4) * 0.4 * intensity; }
         if (role === 'lower_jaw') rot += jawOverlayDeg;
+        roleTransforms.set(role, { pivot: partPivot, driftX, bobY, rotDeg: rot, sx, sy });
+        drawWeaponForRole(frameCtx, role, partPivot, driftX, bobY, rot, sx, sy, renderScale, 'before');
         frameCtx.save(); frameCtx.translate(state.cellWidth / 2, plan.baseFloor); frameCtx.scale(renderScale, renderScale); frameCtx.translate(partPivot.x + driftX, partPivot.y + bobY - state.analysis!.floorY); frameCtx.rotate((rot * Math.PI) / 180); frameCtx.scale(sx, sy);
         if (seamRepairSettings.enabled && seamRepairSettings.gapFillEnabled && shouldJointBlend('torso', role)) {
           frameCtx.globalAlpha = 0.12;
@@ -1156,7 +1207,9 @@ const seamJointPairs = new Set(['torso:front_arm','torso:rear_arm','torso:front_
           frameCtx.globalAlpha = 1;
         }
         frameCtx.restore();
+        drawWeaponForRole(frameCtx, role, partPivot, driftX, bobY, rot, sx, sy, renderScale, 'after');
       }
+      drawAboveAllWeapons(frameCtx, renderScale, roleTransforms);
       perfStats.perFrameRenderMs += performance.now() - frameStart;
     };
     let envelope: MotionEnvelope | null = null;
@@ -1286,7 +1339,12 @@ const seamJointPairs = new Set(['torso:front_arm','torso:rear_arm','torso:front_
     const recommendedCellHeight = envelope ? Math.ceil((envelope.height / Math.max(0.1, 1 - safePaddingYPercent * 2)) / 64) * 64 : state.cellHeight;
     syncRecommendedPreset(false);
     const exportNames = getExportNames();
-    exportMeta = { animationMode, rigTemplate, partBasedIdle: animationMode === 'part-based-idle', idleSettings: { ...idleSettings }, walkSettings: { ...walkSettings }, attackSettings: { ...attackSettings }, globularCrawlSettings: { ...globularCrawlSettings }, quadrupedWalkSettings: { ...quadrupedWalkSettings }, jawAnimationEnabled, jawMode, jawSettings: { ...jawSettings }, seamRepairSettings: { ...seamRepairSettings }, frameCount: state.frameCount, cellWidth: state.cellWidth, cellHeight: state.cellHeight, stripWidth: canvas.width, stripHeight: canvas.height, floorY: plan.baseFloor, renderScale: Number(finalRenderScale.toFixed(4)), selectedPresetLabel, recommendedPresetLabel, defaultPresetLabel: preferredProductionPresetLabel, defaultCellWidth: 3072, defaultCellHeight: 3072, warnings: compileWarnings, bleedRisk: plan.bleedRisk, frameBounds, motionEnvelope: envelope, motionSafeScale, clippingPrevented: useGameReadyProfile ? gameReadyClippingPrevented : clippingPrevented, recommendedCellWidth, recommendedCellHeight, leftMarginMin: Math.min(...frameBounds.map((r) => r.finalLeftMargin)), rightMarginMin: Math.min(...frameBounds.map((r) => r.finalRightMargin)), topMarginMin: envelope ? envelope.minY : 0, bottomMarginMin: envelope ? state.cellHeight - 1 - envelope.maxY : 0, processedLayersUsed: seamRepairSettings.enabled, seamRepairWarnings: [...(seamLayersNeedRebuild ? ['Rebuild Part Layers to apply edge bleed/feather changes.'] : []), ...seamRepairWarnings], seamRepairEnabled: seamRepairSettings.enabled, activeRenderSource: seamRepairSettings.enabled ? 'processed' : 'raw', processedLayerCount: processedPartLayers.size, seamDeltaPixels: seamRepairDebug.seamDeltaPixels, averageLuminanceDelta: Number(seamRepairDebug.averageLuminanceDelta.toFixed(6)), jawPivot: getActiveJawPivot() ?? undefined, lowerJawPresent: rawExtractedPartLayers.has('lower_jaw'), exportProfileLabel: useGameReadyProfile ? selectedPresetLabel : selectedPresetLabel, gameReadyProfile: useGameReadyProfile ? true : undefined, baselineY: useGameReadyProfile ? activeGameReadySpec!.baselineY : undefined, horizontalCentered: useGameReadyProfile ? false : undefined, horizontalBiasApplied: useGameReadyProfile ? true : undefined, gameReadyCenterBiasX: useGameReadyProfile ? gameReadyCenterBiasX : undefined, verticallyCentered: useGameReadyProfile ? false : undefined, transparentBackground: useGameReadyProfile ? true : undefined, frameWidth: useGameReadyProfile ? activeGameReadySpec!.frameWidth : undefined, frameHeight: useGameReadyProfile ? activeGameReadySpec!.frameHeight : undefined, sharedEnvelope: useGameReadyProfile ? gameReadySharedEnvelope : undefined, gameReadyScale: useGameReadyProfile ? Number(sharedScale.toFixed(4)) : undefined, minLeftPadding: useGameReadyProfile ? Number(gameReadyMinLeftPadding.toFixed(3)) : undefined, minRightPadding: useGameReadyProfile ? Number(gameReadyMinRightPadding.toFixed(3)) : undefined, minTopPadding: useGameReadyProfile ? Number(gameReadyMinTopPadding.toFixed(3)) : undefined };
+    const weaponMeta: ExportMetaWeapon[] = weapons.map((weapon) => ({ id: weapon.id, name: weapon.name, sourceFileName: weapon.sourceFileName, anchorPartName: weapon.anchorPartName, layerMode: weapon.layerMode, localOffsetX: weapon.localOffsetX, localOffsetY: weapon.localOffsetY, rotationDeg: weapon.rotationDeg, scale: weapon.scale, visible: weapon.visible, rendered: weaponRenderedIds.has(weapon.id) }));
+    for (const weapon of weapons) {
+      if (!weapon.visible) continue;
+      if (!rawExtractedPartLayers.has(weapon.anchorPartName)) weaponRenderWarnings.add('Weapon anchor part is missing from built layers.');
+    }
+    exportMeta = { animationMode, rigTemplate, partBasedIdle: animationMode === 'part-based-idle', idleSettings: { ...idleSettings }, walkSettings: { ...walkSettings }, attackSettings: { ...attackSettings }, globularCrawlSettings: { ...globularCrawlSettings }, quadrupedWalkSettings: { ...quadrupedWalkSettings }, jawAnimationEnabled, jawMode, jawSettings: { ...jawSettings }, seamRepairSettings: { ...seamRepairSettings }, frameCount: state.frameCount, cellWidth: state.cellWidth, cellHeight: state.cellHeight, stripWidth: canvas.width, stripHeight: canvas.height, floorY: plan.baseFloor, renderScale: Number(finalRenderScale.toFixed(4)), selectedPresetLabel, recommendedPresetLabel, defaultPresetLabel: preferredProductionPresetLabel, defaultCellWidth: 3072, defaultCellHeight: 3072, warnings: compileWarnings, bleedRisk: plan.bleedRisk, frameBounds, motionEnvelope: envelope, motionSafeScale, clippingPrevented: useGameReadyProfile ? gameReadyClippingPrevented : clippingPrevented, recommendedCellWidth, recommendedCellHeight, leftMarginMin: Math.min(...frameBounds.map((r) => r.finalLeftMargin)), rightMarginMin: Math.min(...frameBounds.map((r) => r.finalRightMargin)), topMarginMin: envelope ? envelope.minY : 0, bottomMarginMin: envelope ? state.cellHeight - 1 - envelope.maxY : 0, processedLayersUsed: seamRepairSettings.enabled, seamRepairWarnings: [...(seamLayersNeedRebuild ? ['Rebuild Part Layers to apply edge bleed/feather changes.'] : []), ...seamRepairWarnings], seamRepairEnabled: seamRepairSettings.enabled, activeRenderSource: seamRepairSettings.enabled ? 'processed' : 'raw', processedLayerCount: processedPartLayers.size, seamDeltaPixels: seamRepairDebug.seamDeltaPixels, averageLuminanceDelta: Number(seamRepairDebug.averageLuminanceDelta.toFixed(6)), weapons: weaponMeta, renderedWeaponsCount: weaponMeta.filter((weapon) => weapon.rendered).length, weaponRenderWarnings: [...weaponRenderWarnings], jawPivot: getActiveJawPivot() ?? undefined, lowerJawPresent: rawExtractedPartLayers.has('lower_jaw'), exportProfileLabel: useGameReadyProfile ? selectedPresetLabel : selectedPresetLabel, gameReadyProfile: useGameReadyProfile ? true : undefined, baselineY: useGameReadyProfile ? activeGameReadySpec!.baselineY : undefined, horizontalCentered: useGameReadyProfile ? false : undefined, horizontalBiasApplied: useGameReadyProfile ? true : undefined, gameReadyCenterBiasX: useGameReadyProfile ? gameReadyCenterBiasX : undefined, verticallyCentered: useGameReadyProfile ? false : undefined, transparentBackground: useGameReadyProfile ? true : undefined, frameWidth: useGameReadyProfile ? activeGameReadySpec!.frameWidth : undefined, frameHeight: useGameReadyProfile ? activeGameReadySpec!.frameHeight : undefined, sharedEnvelope: useGameReadyProfile ? gameReadySharedEnvelope : undefined, gameReadyScale: useGameReadyProfile ? Number(sharedScale.toFixed(4)) : undefined, minLeftPadding: useGameReadyProfile ? Number(gameReadyMinLeftPadding.toFixed(3)) : undefined, minRightPadding: useGameReadyProfile ? Number(gameReadyMinRightPadding.toFixed(3)) : undefined, minTopPadding: useGameReadyProfile ? Number(gameReadyMinTopPadding.toFixed(3)) : undefined };
     renderReport.textContent = JSON.stringify(exportMeta, null, 2);
     renderReport.dataset.stale = 'false';
     updateExportButtonState();
@@ -1325,7 +1383,7 @@ const seamJointPairs = new Set(['torso:front_arm','torso:rear_arm','torso:front_
   });
   q<HTMLSelectElement>('weaponSelect').addEventListener('change', (e) => { selectedWeaponId = (e.target as HTMLSelectElement).value || null; syncWeaponControls(); scheduleWorkspaceRender(); markStale(); });
   q<HTMLButtonElement>('deleteWeapon').addEventListener('click', () => { if (!selectedWeaponId) return; weapons = weapons.filter((w) => w.id !== selectedWeaponId); weaponImages.delete(selectedWeaponId); selectedWeaponId = weapons[0]?.id ?? null; syncWeaponControls(); markStale(); scheduleWorkspaceRender(); setStatus('Weapon deleted.'); });
-  const updateWeapon = (fn: (weapon: WeaponAttachment) => void) => { const weapon = getSelectedWeapon(); if (!weapon) return; fn(weapon); markStale(); syncWeaponControls(); scheduleWorkspaceRender(); };
+  const updateWeapon = (fn: (weapon: WeaponAttachment) => void) => { const weapon = getSelectedWeapon(); if (!weapon) return; fn(weapon); markStale(); syncWeaponControls(); scheduleWorkspaceRender(); setStatus('Weapon changed. Generate Strip to update animation preview/export.'); };
   q<HTMLSelectElement>('weaponAnchorPart').addEventListener('change', (e) => updateWeapon((weapon) => { weapon.anchorPartName = (e.target as HTMLSelectElement).value; }));
   q<HTMLInputElement>('weaponOffsetX').addEventListener('input', (e) => updateWeapon((weapon) => { weapon.localOffsetX = Number((e.target as HTMLInputElement).value); }));
   q<HTMLInputElement>('weaponOffsetY').addEventListener('input', (e) => updateWeapon((weapon) => { weapon.localOffsetY = Number((e.target as HTMLInputElement).value); }));
@@ -1592,7 +1650,7 @@ const syncIdleReadout = () => {
       return;
     }
     const { jsonFileName } = getExportNames();
-    downloadBlob(jsonFileName, new Blob([JSON.stringify({ ...exportMeta, weapons }, null, 2)], { type: 'application/json' }));
+    downloadBlob(jsonFileName, new Blob([JSON.stringify(exportMeta, null, 2)], { type: 'application/json' }));
   });
 
   q<HTMLSelectElement>('frameCount').addEventListener('change', (e) => { state.frameCount = Number((e.target as HTMLSelectElement).value) as 5 | 6; markStale(); });
