@@ -122,6 +122,7 @@ export type ProjectSaveData = {
   jawPivot?: { x: number; y: number };
   lipLine?: { y: number };
   weapons?: WeaponAttachment[];
+  selectedWeaponId?: string | null;
 };
 
 export const defaultState: ProjectState = { frameCount: 6, cellWidth: 3072, cellHeight: 3072, analysis: null };
