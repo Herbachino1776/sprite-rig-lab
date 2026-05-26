@@ -105,6 +105,11 @@ pre,
 
 .animatePrimaryActions { align-items: flex-end; }
 .animatePrimaryActions > * { flex: 1 1 180px; }
+.weaponQuickCard h3 { margin: 0 0 8px; color: #c897ff; letter-spacing: .04em; }
+.weaponQuickCard .weaponGrid { margin-top: 8px; }
+.weaponQuickCard .weaponDeleteRow { justify-content: flex-end; margin-top: 8px; }
+.inlineToggle { flex-direction: row; align-items: center; gap: 8px; }
+.inlineToggle input[type="checkbox"] { width: 18px; height: 18px; min-height: 18px; }
 .animSettingsCard h3 { margin: 0 0 8px; color: #c897ff; letter-spacing: .04em; }
 #animateControls .previewPanel canvas { max-height: min(42vh, 360px); object-fit: contain; }
 .seamRepairPanel summary { cursor: pointer; font-weight: 700; color: #c897ff; letter-spacing: .04em; }
