@@ -4,6 +4,11 @@ import { idleTransform } from './motion/idlePreset';
 import { GIFEncoder, applyPalette, quantize } from 'gifenc';
 import { downloadBlob } from './export/exporters';
 import { defaultState, defaultPartNames, globularPartNames, quadrupedPartNames, type JawMode, type JawSettings, type MaskPart, type ProjectSaveData, type RigTemplate, type WeaponAttachment, type WeaponLayerMode } from './state/projectState';
+import { createDefaultFpvState } from './fpv/fpvState';
+import { renderFpvFrame, renderFpvStrip } from './fpv/renderFpvStrip';
+import { exportFpvMetadata } from './fpv/exportFpvMetadata';
+import { inspectFpvCanvas } from './qa/fpvAlphaChecks';
+import type { FpvLayer, FpvMetadata, FpvState } from './fpv/fpvTypes';
 
 type RenderPlan = { baseFloor: number; renderScale: number; maxMotionScale: number; sidePadding: number; topPadding: number; bleedRisk: boolean; warnings: string[] };
 type ToolMode = 'brush-add' | 'brush-erase' | 'lasso-add' | 'lasso-erase' | 'set-pivot' | 'set-floor' | 'transform-part' | 'transform-weapon';
@@ -27,6 +32,7 @@ type ExportMetaWeapon = { id: string; name: string; sourceFileName: string; anch
 type ExportMeta = { animationMode: AnimationMode; rigTemplate: RigTemplate; partBasedIdle: boolean; idleSettings: IdleSettings; walkSettings: WalkSettings; attackSettings: AttackSettings; globularCrawlSettings: GlobularCrawlSettings; quadrupedWalkSettings: QuadrupedWalkSettings; jawAnimationEnabled: boolean; jawMode: JawMode; jawSettings: JawSettings; seamRepairSettings: SeamRepairSettings; frameCount: number; cellWidth: number; cellHeight: number; stripWidth: number; stripHeight: number; floorY: number; renderScale: number; selectedPresetLabel: string; recommendedPresetLabel: string; defaultPresetLabel: string; defaultCellWidth: number; defaultCellHeight: number; warnings: string[]; bleedRisk: boolean; frameBounds: FrameBoundsReport[]; motionEnvelope: MotionEnvelope | null; motionSafeScale: number; clippingPrevented: boolean; recommendedCellWidth: number; recommendedCellHeight: number; leftMarginMin: number; rightMarginMin: number; topMarginMin: number; bottomMarginMin: number; processedLayersUsed: boolean; seamRepairWarnings: string[]; seamRepairEnabled: boolean; activeRenderSource: 'raw' | 'processed'; processedLayerCount: number; seamDeltaPixels: number; averageLuminanceDelta: number; weapons: ExportMetaWeapon[]; renderedWeaponsCount: number; weaponRenderWarnings: string[]; exportProfileLabel?: string; gameReadyProfile?: boolean; baselineY?: number; horizontalCentered?: boolean; horizontalBiasApplied?: boolean; gameReadyCenterBiasX?: number; verticallyCentered?: boolean; transparentBackground?: boolean; frameWidth?: number; frameHeight?: number; sharedEnvelope?: AlphaBounds | null; gameReadyScale?: number; minLeftPadding?: number; minRightPadding?: number; minTopPadding?: number; gifWidth?: number; gifHeight?: number; gifFrameCount?: number; gifFps?: number; gifFrameDelayMs?: number; gifLoop?: boolean; jawPivot?: Point; lowerJawPresent?: boolean; };
 type PreviewMode = 'idle-strip' | 'part-layer' | 'composite-parts';
 type ShellMode = 'mask' | 'rig' | 'animate' | 'export';
+type ProductMode = 'enemy' | 'fpv-arms';
 type MaskStats = { bounds: { minX: number; maxX: number; minY: number; maxY: number; width: number; height: number }; area: number; centroid: Point; bottomCenter: Point; touchesFloor: boolean; warnings: string[] };
 type FinePointerState = { active: boolean; canvasPoint: Point; sourcePoint: Point };
 
@@ -134,6 +140,10 @@ export function initApp(root: HTMLDivElement) {
   let stalePreview = true;
   let previewMode: PreviewMode = 'idle-strip';
   let shellMode: ShellMode = 'mask';
+  let productMode: ProductMode = 'enemy';
+  let fpvState: FpvState = createDefaultFpvState();
+  let fpvExportCanvas: HTMLCanvasElement | null = null;
+  let fpvExportMetadata: FpvMetadata | null = null;
   let animationMode: AnimationMode = 'whole-sprite-idle';
   let rigTemplate: RigTemplate = 'biped';
   const defaultIdleSettings: IdleSettings = { breathingAmount: 1, headSway: 1, armDrift: 1, overallIntensity: 1 };
@@ -191,11 +201,13 @@ export function initApp(root: HTMLDivElement) {
   root.innerHTML = `<div class="shell">
   <header class="topBar panel"><div class="brandBlock"><h1>SPRITE RIG LAB</h1></div><div class="projectButtons"><label class="fileLabel primary">Upload PNG<input id="file" type="file" accept="image/png" /></label><label class="fileLabel">Load Project<input id="loadProject" type="file" accept="application/json" /></label><button id="saveProject" disabled>Save Project</button></div><div class="savedCluster"><span id="savedStat" class="savedBadge">Project Unsaved</span><p id="status" class="status">Waiting for PNG upload.</p></div></header>
   <section class="panel statusRow"><span id="fileStat">none</span><span id="dimensionsStat">3072 × 3072</span><span id="partsStat">Parts: 0</span><span id="modeStat">Mode: Mask</span><span id="zoomStat">Zoom: 100%</span><span class="settingsStub">⚙</span></section>
-  <main class="workspaceShell panel"><div class="zoomRail"><button type="button">+</button><span>100%</span><button type="button">−</button></div><section class="workspaceArea"><canvas id="workspace" width="1024" height="1024"></canvas></section><aside id="partInfo" class="partInfo inspector"></aside></main>
+  <section class="panel productModeSwitch"><button id="enemyModeButton" class="active" type="button">Enemy/Boss Sprite</button><button id="fpvModeButton" type="button">FPV Arms</button></section>
+  <main id="enemyWorkspaceShell" class="workspaceShell panel"><div class="zoomRail"><button type="button">+</button><span>100%</span><button type="button">−</button></div><section class="workspaceArea"><canvas id="workspace" width="1024" height="1024"></canvas></section><aside id="partInfo" class="partInfo inspector"></aside></main>
+  <section id="fpvLab" class="panel fpvLab" hidden><div class="fpvPreviewColumn"><section class="previewPanel fpvPreviewPanel"><h3>FPV Arms Preview</h3><canvas id="fpvPreview" width="1024" height="1024"></canvas><div id="fpvFrameScrubber" class="fpvFrameScrubber"></div></section><section class="controls"><div class="row"><button id="fpvPresetUnarmedIdle" class="primary" type="button">Unarmed Idle</button><button id="fpvExportPng" type="button">Export PNG</button><button id="fpvExportJson" type="button">Export JSON</button></div><pre id="fpvExportReport">FPV Arms defaults: 6 frames, 1024×1024 cells, 6144×1024 strip.</pre></section></div><aside class="fpvControls"><section class="controls"><h3>Layers</h3><div id="fpvLayerList" class="fpvLayerList"></div><label class="fileLabel">Upload Selected Layer PNG<input id="fpvLayerFile" type="file" accept="image/png" /></label></section><section class="controls fpvTransformControls"><h3>Selected Layer Transform</h3><label class="inlineToggle">Visible<input id="fpvLayerVisible" type="checkbox" checked /></label><div class="controlGrid"><div class="compactSlider"><label for="fpvLayerX">X <span id="fpvLayerXValue">0</span></label><input id="fpvLayerX" type="range" min="-256" max="1280" step="1" value="0" /></div><div class="compactSlider"><label for="fpvLayerY">Y <span id="fpvLayerYValue">0</span></label><input id="fpvLayerY" type="range" min="-256" max="1280" step="1" value="0" /></div><div class="compactSlider"><label for="fpvLayerScale">Scale <span id="fpvLayerScaleValue">1.00</span></label><input id="fpvLayerScale" type="range" min="0.05" max="4" step="0.01" value="1" /></div><div class="compactSlider"><label for="fpvLayerRotation">Rotation <span id="fpvLayerRotationValue">0°</span></label><input id="fpvLayerRotation" type="range" min="-180" max="180" step="1" value="0" /></div><div class="compactSlider"><label for="fpvLayerOpacity">Opacity <span id="fpvLayerOpacityValue">100%</span></label><input id="fpvLayerOpacity" type="range" min="0" max="1" step="0.01" value="1" /></div></div></section></aside></section>
   <section id="weaponQuickCard" class="panel weaponQuickCard" hidden><h3>WEAPON POSITION</h3><label class="fileLabel">Add Weapon PNG<input id="weaponFile" type="file" accept="image/png" /></label><div class="row"><label>Weapon<select id="weaponSelect"></select></label><label class="inlineToggle">Visible<input id="weaponVisible" type="checkbox" checked /></label></div><div id="weaponControls" hidden><div class="row"><label>Anchor Part<select id="weaponAnchorPart"></select></label><label>Layer<select id="weaponLayerMode"><option value="behind-anchor">Behind anchor part</option><option value="above-anchor" selected>Above anchor part</option><option value="above-all">Above all body parts</option></select></label></div><div class="controlGrid weaponGrid"><div class="compactSlider"><label for="weaponOffsetX">X Offset <span id="weaponOffsetXValue">0</span></label><input id="weaponOffsetX" type="range" min="-512" max="512" step="1" value="0" /></div><div class="compactSlider"><label for="weaponOffsetY">Y Offset <span id="weaponOffsetYValue">0</span></label><input id="weaponOffsetY" type="range" min="-512" max="512" step="1" value="0" /></div><div class="compactSlider"><label for="weaponRotation">Rotation <span id="weaponRotationValue">0°</span></label><input id="weaponRotation" type="range" min="-180" max="180" step="1" value="0" /></div><div class="compactSlider"><label for="weaponScale">Scale <span id="weaponScaleValue">1.00</span></label><input id="weaponScale" type="range" min="0.25" max="3" step="0.01" value="1" /></div></div><p id="weaponStatus" class="tipLine"></p><p id="weaponAnchorWarning" class="seamWarning" hidden>Weapon anchor part is missing.</p></div><div class="row weaponDeleteRow"><button id="deleteWeapon" type="button">Delete Weapon</button></div></section>
-  <section class="panel partChipsWrap"><div class="partChips" id="partChips"></div></section>
-  <section class="panel modeTabs"><button id="modeMask" class="active" type="button">✎ Mask</button><button id="modeRig" type="button">⎔ Rig</button><button id="modeAnimate" type="button">〰 Animate</button><button id="modeExport" type="button">⇩ Export</button></section>
-  <section class="panel modeControls">
+  <section id="enemyPartChipsWrap" class="panel partChipsWrap"><div class="partChips" id="partChips"></div></section>
+  <section id="enemyModeTabs" class="panel modeTabs"><button id="modeMask" class="active" type="button">✎ Mask</button><button id="modeRig" type="button">⎔ Rig</button><button id="modeAnimate" type="button">〰 Animate</button><button id="modeExport" type="button">⇩ Export</button></section>
+  <section id="enemyModeControls" class="panel modeControls">
   <div id="maskControls"><div class="segmented toolModes"><button id="brushAddMode" type="button">Brush Add</button><button id="brushEraseMode" type="button">Brush Erase</button><button id="lassoAddMode" type="button">Lasso Add</button><button id="lassoEraseMode" type="button">Lasso Erase</button><button id="undoMaskAction" type="button" disabled>Undo</button><button id="cancelLasso" type="button" disabled>Cancel Lasso</button></div><div class="fineModeRow"><button id="fineModeToggle" type="button">Fine: Off</button><button id="fineModeExit" type="button" hidden>Exit Fine</button><span id="fineModeLabel" class="fineModeLabel" hidden>Fine Mode</span></div><div class="controlGrid"><div class="compactSlider"><label for="brushSize">Brush Size <span id="brushSizeValue">24</span></label><input id="brushSize" type="range" min="1" max="256" value="24" /></div><div class="compactSlider"><label for="overlayOpacity">Overlay Opacity <span id="overlayOpacityValue">45%</span></label><input id="overlayOpacity" type="range" min="0.05" max="1" step="0.05" value="0.45" /></div></div><div class="tipLine">Tip: Use Lasso Add to create clean masks around body parts.</div></div>
   <div id="rigControls" hidden><div class="segmented"><button id="rigTemplateBiped" class="active" type="button">Biped</button><button id="rigTemplateGlobular" type="button">Globular</button><button id="rigTemplateQuadruped" type="button">Quadruped</button></div><p id="globularRigHint" class="tipLine" hidden>Mask base as the grounded bottom of the glob. Base replaces legs for crawl motion.</p><div class="segmented toolModes"><button id="setPivotMode" type="button">Set Pivot</button><button id="setFloorMode" type="button">Set Floor Contact</button><button id="transformPartMode" type="button">Transform Part</button></div><div class="row"><button id="addUnderpaintPatch" type="button">Add Underpaint Patch</button><label>Parent<select id="underpaintParent"></select></label><label>Name<input id="underpaintName" type="text" placeholder="torso_underpaint_01" /></label><button id="renameUnderpaintPatch" type="button">Rename Patch</button><button id="deleteUnderpaintPatch" type="button">Delete Patch</button><button id="fillUnderpaintPatch" type="button">Debug Fill Patch</button><button id="clearUnderpaintPatch" type="button">Clear Debug Fill</button></div><div class="row"><button id="underpaintSourceMode" type="button">Source Clone Underpaint</button><label class="inlineToggle"><input id="clipPatchToGaps" type="checkbox" checked />Clip Patch To Transparent Gaps</label><label class="inlineToggle"><input id="allowDebugFillExport" type="checkbox" />Allow debug fill in export</label></div><p class="tipLine">Debug fill is only for visibility testing. Do not use for final export.</p><pre id="underpaintDiagnostics" class="seamSubline"></pre><div class="autoRigPanel"><div class="row"><button id="autoPlacePivotsButton" class="primary" type="button">Auto-place pivots & floor contacts</button></div><label class="inlineToggle"><input id="overwritePivots" type="checkbox" />Overwrite existing pivots & floor contacts</label><div id="autoRigFeedback" class="partInfo">Auto rig hints are ready after masks (and optionally built part layers).</div></div><div class="transformPanel" id="transformPanel" hidden><div class="compactSlider"><label for="rotationDeg">Rotate <span id="rotationDegValue">0°</span></label><input id="rotationDeg" type="range" min="-180" max="180" step="1" value="0" /></div><div class="compactSlider"><label for="uniformScale">Scale <span id="uniformScaleValue">1.00</span></label><input id="uniformScale" type="range" min="0.25" max="2" step="0.01" value="1" /></div><div class="row nudgeRow"><button id="nudgeUp" type="button">↑</button><button id="nudgeLeft" type="button">←</button><button id="nudgeRight" type="button">→</button><button id="nudgeDown" type="button">↓</button></div><div class="row"><button id="resetPartTransform" type="button">Reset Part</button><button id="resetAllTransforms" type="button">Reset All</button></div></div></div>
 <div id="animateControls" hidden><div class="segmented"><button id="wholeIdleMode" class="active" type="button">Whole Sprite Idle</button><button id="partIdleMode" type="button">Part-Based Idle</button><button id="partWalkMode" type="button">Small Walk</button><button id="partAttackMode" type="button">Attack</button><button id="partGlobularCrawlMode" type="button">Globular Crawl</button><button id="partQuadrupedWalkMode" type="button">Quadruped Walk</button></div><div class="row animatePrimaryActions"><button id="buildPartLayersButton" type="button">Build Part Layers</button><button id="generateButton" class="primary">Generate Strip</button><label>Preview Mode<select id="previewMode"><option value="idle-strip">Idle Strip</option><option value="part-layer">Part Layer Preview</option><option value="composite-parts">Composite Parts Preview</option></select></label></div><section class="previewPanel"><h3>Preview</h3><canvas id="preview" width="1024" height="1024"></canvas></section><section id="idleSettingsCard" class="panel animSettingsCard"><h3>IDLE SETTINGS</h3><div class="controlGrid" id="idleControlGrid"><div class="compactSlider"><label for="breathingAmount">Breathing <span id="breathingAmountValue">1.00</span></label><input id="breathingAmount" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="headSway">Head sway <span id="headSwayValue">1.00</span></label><input id="headSway" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="armDrift">Arm drift <span id="armDriftValue">1.00</span></label><input id="armDrift" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="overallIntensity">Overall <span id="overallIntensityValue">1.00</span></label><input id="overallIntensity" type="range" min="0" max="2" step="0.05" value="1" /></div></div><div class="row"><button id="resetIdleSettings" type="button">Reset idle settings</button></div></section><section id="walkSettingsCard" class="panel animSettingsCard" hidden><h3>SMALL WALK SETTINGS</h3><div class="controlGrid" id="walkControlGrid"><div class="compactSlider"><label for="walkIntensity">Walk intensity <span id="walkIntensityValue">1.00</span></label><input id="walkIntensity" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="strideWidth">Stride width <span id="strideWidthValue">1.00</span></label><input id="strideWidth" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="legCrossing">Leg crossing <span id="legCrossingValue">0.25</span></label><input id="legCrossing" type="range" min="0" max="1" step="0.05" value="0.25" /></div><div class="compactSlider"><label for="hipSway">Hip sway <span id="hipSwayValue">1.00</span></label><input id="hipSway" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="armSwing">Arm swing <span id="armSwingValue">1.00</span></label><input id="armSwing" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="footLockStrength">Foot lock <span id="footLockStrengthValue">0.85</span></label><input id="footLockStrength" type="range" min="0" max="1" step="0.05" value="0.85" /></div></div><div class="row"><button id="resetWalkSettings" type="button">Reset walk settings</button></div></section><section id="attackSettingsCard" class="panel animSettingsCard" hidden><h3>ATTACK SETTINGS</h3><div id="attackStyleRow" class="segmented"><button id="attackStyleForward" class="active" type="button">Forward Strike</button><button id="attackStyleChop" type="button">Overhead Chop</button></div><div class="controlGrid" id="attackControlGrid"><div class="compactSlider"><label for="attackIntensity">Attack intensity <span id="attackIntensityValue">1.00</span></label><input id="attackIntensity" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="attackReach">Attack reach <span id="attackReachValue">1.00</span></label><input id="attackReach" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="torsoLean">Torso lean <span id="torsoLeanValue">1.00</span></label><input id="torsoLean" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="attackArmSwing">Arm swing <span id="attackArmSwingValue">1.00</span></label><input id="attackArmSwing" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="recoilAmount">Recoil <span id="recoilAmountValue">1.00</span></label><input id="recoilAmount" type="range" min="0" max="2" step="0.05" value="1" /></div></div><div class="row"><button id="resetAttackSettings" type="button">Reset attack settings</button></div></section><section id="globularSettingsCard" class="panel animSettingsCard" hidden><h3>GLOBULAR CRAWL SETTINGS</h3><div class="controlGrid" id="globularCrawlControlGrid"><div class="compactSlider"><label for="crawlIntensity">Crawl intensity <span id="crawlIntensityValue">1.00</span></label><input id="crawlIntensity" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="bodySquash">Body squash <span id="bodySquashValue">1.00</span></label><input id="bodySquash" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="pullReach">Pull reach <span id="pullReachValue">1.00</span></label><input id="pullReach" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="forwardLurch">Forward lurch <span id="forwardLurchValue">1.00</span></label><input id="forwardLurch" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="armPull">Arm pull <span id="armPullValue">1.00</span></label><input id="armPull" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="trailingDrag">Trailing drag <span id="trailingDragValue">1.00</span></label><input id="trailingDrag" type="range" min="0" max="2" step="0.05" value="1" /></div></div><div class="row"><button id="resetCrawlSettings" type="button">Reset crawl settings</button></div></section><section id="quadrupedSettingsCard" class="panel animSettingsCard" hidden><h3>QUADRUPED WALK SETTINGS</h3><div class="controlGrid" id="quadrupedWalkControlGrid"><div class="compactSlider"><label for="quadStepLength">Step length <span id="quadStepLengthValue">1.00</span></label><input id="quadStepLength" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="quadLegLift">Leg lift <span id="quadLegLiftValue">1.00</span></label><input id="quadLegLift" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="quadBodyBob">Body bob <span id="quadBodyBobValue">1.00</span></label><input id="quadBodyBob" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="quadHeadBob">Head bob <span id="quadHeadBobValue">1.00</span></label><input id="quadHeadBob" type="range" min="0" max="2" step="0.05" value="1" /></div><div class="compactSlider"><label for="quadGaitIntensity">Gait intensity <span id="quadGaitIntensityValue">1.00</span></label><input id="quadGaitIntensity" type="range" min="0" max="2" step="0.05" value="1" /></div></div><div class="row"><button id="resetQuadrupedSettings" type="button">Reset quadruped settings</button></div></section><section id="jawMotionSection" class="panel" hidden><h3>JAW MOTION</h3><p id="jawMotionHint" class="seamSubline" hidden>Add lower_jaw and set Jaw Pivot to enable jaw animation.</p><div id="jawMotionControls"><div class="toggleGroup"><button id="jawAnimOff" type="button" class="active">Jaw Animation Off</button><button id="jawAnimOn" type="button">Jaw Animation On</button></div><div class="segmented" id="jawModeRow" hidden><button id="jawModeClosed" class="active" type="button">Closed</button><button id="jawModeOpenHold" type="button">Open Hold</button><button id="jawModeTalk" type="button">Talk</button><button id="jawModePant" type="button">Pant</button><button id="jawModeBiteSnap" type="button">Bite Snap</button><button id="jawModeSnarlPulse" type="button">Snarl Pulse</button></div><div class="controlGrid" id="jawSettingsGrid" hidden><div class="compactSlider"><label for="jawOpenAngle">Jaw Open Angle <span id="jawOpenAngleValue">24°</span></label><input id="jawOpenAngle" type="range" min="0" max="50" step="1" value="24" /></div><div class="compactSlider"><label for="jawSpeed">Jaw Speed <span id="jawSpeedValue">1.00</span></label><input id="jawSpeed" type="range" min="0.1" max="3" step="0.05" value="1" /></div><div class="compactSlider"><label for="jawBlendAmount">Jaw Blend <span id="jawBlendAmountValue">100%</span></label><input id="jawBlendAmount" type="range" min="0" max="1" step="0.05" value="1" /></div><div class="compactSlider"><label for="jawPhaseOffset">Jaw Phase <span id="jawPhaseOffsetValue">0.00</span></label><input id="jawPhaseOffset" type="range" min="-3.14" max="3.14" step="0.1" value="0" /></div></div><div class="row"><button id="resetJawSettings" type="button">Reset Jaw Settings</button></div></div></section><details class="panel seamRepairPanel" id="seamRepairPanel"><summary>SEAM REPAIR</summary><p class="seamSubline">Applied to part-based renders only.</p><p class="seamSubline">Rebuilds on Generate Strip.</p><div class="toggleGroup" id="seamRepairEnabled"><button id="seamRepairOff" type="button" class="active">Disable Seam Repair</button><button id="seamRepairOn" type="button">Enable Seam Repair</button></div><div class="controlGrid"><div class="compactSlider"><label for="edgeBleedPx">Edge Bleed <span id="edgeBleedPxValue">1px</span></label><input id="edgeBleedPx" type="range" min="1" max="4" step="1" value="1" /></div><div class="compactSlider"><label for="edgeFeatherPx">Feather <span id="edgeFeatherPxValue">0.5px</span></label><input id="edgeFeatherPx" type="range" min="0" max="2" step="0.25" value="0.5" /></div><div class="compactSlider"><label for="jointOverlapPx">Joint Overlap <span id="jointOverlapPxValue">3px</span></label><input id="jointOverlapPx" type="range" min="2" max="12" step="1" value="3" /></div><div class="compactSlider"><label for="seamBlendStrength">Blend Strength <span id="seamBlendStrengthValue">25%</span></label><input id="seamBlendStrength" type="range" min="0" max="100" step="1" value="25" /></div></div><div class="toggleGroup" id="gapFillEnabled"><button id="gapFillOff" type="button">Gap Fill Off</button><button id="gapFillOn" type="button" class="active">Gap Fill On</button></div><div class="row"><button id="safeSeamDefaults" type="button">Safe Seam Defaults</button><button id="strongSeamDiagnostic" type="button">Strong Seam Diagnostic</button><button id="resetSeamSettings" type="button">Reset Seam Settings</button></div><div class="toggleGroup" id="seamRepairPreviewMode"><button id="seamPreviewRaw" type="button" class="active">Preview Raw</button><button id="seamPreviewProcessed" type="button">Preview Seam-Repaired</button></div><pre id="seamDebugReadout" class="seamSubline"></pre><p id="seamDeltaWarning" class="seamWarning" hidden></p></details><div class="row"><button id="exportSelectedPartButton" type="button">Export Selected Part PNG</button></div></div>
@@ -268,6 +280,97 @@ export function initApp(root: HTMLDivElement) {
 
   const setStatus = (m: string, e = false) => { status.textContent = m; status.classList.toggle('error', e); };
 
+  const getSelectedFpvLayer = (): FpvLayer => fpvState.layers.find((layer) => layer.id === fpvState.selectedLayerId) ?? fpvState.layers[0]!;
+  const markFpvStale = () => { fpvExportCanvas = null; fpvExportMetadata = null; };
+  const getFpvExportBaseName = () => sanitizeBaseName(exportBaseNameOverride || sourceBaseName || 'fpv_arms');
+  const syncFpvReport = (message?: string) => {
+    const lines = [
+      message ?? 'FPV Arms defaults: 6 frames, 1024×1024 cells, 6144×1024 strip.',
+      `Mode: ${fpvState.mode}`,
+      `Animation: ${fpvState.animation}`,
+      `Dimensions: ${fpvState.frameCount} × ${fpvState.cellWidth}×${fpvState.cellHeight} = ${fpvState.frameCount * fpvState.cellWidth}×${fpvState.cellHeight}`,
+      `Loaded layers: ${fpvState.layers.filter((layer) => !!layer.image).length}/${fpvState.layers.length}`,
+    ];
+    if (fpvExportMetadata) lines.push(JSON.stringify(fpvExportMetadata.qa, null, 2));
+    q<HTMLPreElement>('fpvExportReport').textContent = lines.join('\n');
+  };
+  const renderFpvPreview = () => {
+    const fpvPreview = q<HTMLCanvasElement>('fpvPreview');
+    renderFpvFrame(fpvPreview.getContext('2d')!, fpvState, fpvState.selectedFrame, fpvPreview.width, fpvPreview.height);
+  };
+  const syncFpvLayerList = () => {
+    const list = q<HTMLDivElement>('fpvLayerList');
+    list.innerHTML = fpvState.layers.map((layer) => `<button type="button" data-fpv-layer="${layer.id}" class="${layer.id === fpvState.selectedLayerId ? 'active' : ''}">${layer.label}<span>${layer.image ? layer.sourceFileName : 'stub'}</span></button>`).join('');
+    for (const button of Array.from(list.querySelectorAll<HTMLButtonElement>('button[data-fpv-layer]'))) {
+      button.addEventListener('click', () => {
+        fpvState.selectedLayerId = button.dataset.fpvLayer ?? fpvState.selectedLayerId;
+        syncFpvUi();
+      });
+    }
+  };
+  const syncFpvScrubber = () => {
+    const scrubber = q<HTMLDivElement>('fpvFrameScrubber');
+    scrubber.innerHTML = Array.from({ length: fpvState.frameCount }, (_, index) => `<button type="button" data-fpv-frame="${index}" class="${index === fpvState.selectedFrame ? 'active' : ''}">${index + 1}</button>`).join('');
+    for (const button of Array.from(scrubber.querySelectorAll<HTMLButtonElement>('button[data-fpv-frame]'))) {
+      button.addEventListener('click', () => {
+        fpvState.selectedFrame = Number(button.dataset.fpvFrame ?? 0);
+        syncFpvUi();
+      });
+    }
+  };
+  const syncFpvTransformControls = () => {
+    const layer = getSelectedFpvLayer();
+    const t = layer.baseTransform;
+    q<HTMLInputElement>('fpvLayerVisible').checked = t.visible;
+    q<HTMLInputElement>('fpvLayerX').value = String(t.x);
+    q<HTMLInputElement>('fpvLayerY').value = String(t.y);
+    q<HTMLInputElement>('fpvLayerScale').value = String(t.scale);
+    q<HTMLInputElement>('fpvLayerRotation').value = String(t.rotation);
+    q<HTMLInputElement>('fpvLayerOpacity').value = String(t.opacity);
+    q<HTMLSpanElement>('fpvLayerXValue').textContent = `${Math.round(t.x)}`;
+    q<HTMLSpanElement>('fpvLayerYValue').textContent = `${Math.round(t.y)}`;
+    q<HTMLSpanElement>('fpvLayerScaleValue').textContent = t.scale.toFixed(2);
+    q<HTMLSpanElement>('fpvLayerRotationValue').textContent = `${Math.round(t.rotation)}°`;
+    q<HTMLSpanElement>('fpvLayerOpacityValue').textContent = `${Math.round(t.opacity * 100)}%`;
+  };
+  function syncFpvUi() {
+    syncFpvLayerList();
+    syncFpvScrubber();
+    syncFpvTransformControls();
+    renderFpvPreview();
+    syncFpvReport();
+  }
+  const updateFpvLayer = (fn: (layer: FpvLayer) => void) => {
+    fn(getSelectedFpvLayer());
+    markFpvStale();
+    syncFpvTransformControls();
+    renderFpvPreview();
+  };
+  const generateFpvExport = (): FpvMetadata => {
+    const result = renderFpvStrip(fpvState);
+    const shape = { frameCount: fpvState.frameCount, cellWidth: fpvState.cellWidth, cellHeight: fpvState.cellHeight, stripWidth: result.canvas.width, stripHeight: result.canvas.height };
+    const qa = inspectFpvCanvas(result.canvas, shape);
+    const metadata = exportFpvMetadata(fpvState, result.frameOffsets, qa);
+    fpvExportCanvas = result.canvas;
+    fpvExportMetadata = metadata;
+    syncFpvReport(qa.warnings.length ? `FPV export generated with ${qa.warnings.length} warning(s).` : 'FPV export generated. Alpha verified.');
+    setStatus(`Generated FPV strip ${result.canvas.width}x${result.canvas.height}${qa.warnings.length ? ' with QA warnings' : ''}.`, qa.warnings.length > 0);
+    return metadata;
+  };
+  const syncProductMode = () => {
+    const isFpv = productMode === 'fpv-arms';
+    q<HTMLButtonElement>('enemyModeButton').classList.toggle('active', !isFpv);
+    q<HTMLButtonElement>('fpvModeButton').classList.toggle('active', isFpv);
+    q<HTMLElement>('enemyWorkspaceShell').hidden = isFpv;
+    q<HTMLElement>('weaponQuickCard').hidden = isFpv || !(shellMode === 'rig' || shellMode === 'animate');
+    q<HTMLElement>('enemyPartChipsWrap').hidden = isFpv;
+    q<HTMLElement>('enemyModeTabs').hidden = isFpv;
+    q<HTMLElement>('enemyModeControls').hidden = isFpv;
+    q<HTMLElement>('fpvLab').hidden = !isFpv;
+    if (isFpv) syncFpvUi();
+    updateStatusRow();
+  };
+
   const weaponImages = new Map<string, HTMLImageElement>();
   const getAnchorPartOptions = () => parts.filter((part) => part.visible).map((part) => part.name);
   const resolveWeaponAnchorPartName = () => {
@@ -307,7 +410,7 @@ export function initApp(root: HTMLDivElement) {
   };
   const updateStatusRow = () => {
     q<HTMLSpanElement>('partsStat').textContent = `Parts: ${parts.filter((p) => p.visible).length}/${parts.length}`;
-    q<HTMLSpanElement>('modeStat').textContent = `Mode: ${shellMode[0]?.toUpperCase()}${shellMode.slice(1)}`;
+    q<HTMLSpanElement>('modeStat').textContent = productMode === 'fpv-arms' ? 'Mode: FPV Arms' : `Mode: ${shellMode[0]?.toUpperCase()}${shellMode.slice(1)}`;
     q<HTMLSpanElement>('zoomStat').textContent = `Zoom: ${Math.round(workspaceTransform.scale * 100)}%`;
   };
   const defaultProjectBaseName = 'sprite_rig_project';
@@ -1363,6 +1466,56 @@ const seamJointPairs = new Set(['torso:front_arm','torso:rear_arm','torso:front_
     previewRaf = requestAnimationFrame(tick);
   };
 
+  q<HTMLButtonElement>('enemyModeButton').addEventListener('click', () => {
+    productMode = 'enemy';
+    syncProductMode();
+    setStatus('Enemy/Boss Sprite mode selected.');
+  });
+  q<HTMLButtonElement>('fpvModeButton').addEventListener('click', () => {
+    productMode = 'fpv-arms';
+    syncProductMode();
+    setStatus('FPV Arms mode selected.');
+  });
+  q<HTMLButtonElement>('fpvPresetUnarmedIdle').addEventListener('click', () => {
+    fpvState = { ...fpvState, animation: 'unarmed_idle' };
+    markFpvStale();
+    syncFpvUi();
+    setStatus('Applied Unarmed Idle offsets without changing base layer placement.');
+  });
+  q<HTMLInputElement>('fpvLayerFile').addEventListener('change', async (e) => {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    try {
+      const loaded = await loadPngFromFile(file);
+      const layer = getSelectedFpvLayer();
+      layer.image = loaded;
+      layer.sourceFileName = file.name;
+      layer.baseTransform.visible = true;
+      markFpvStale();
+      syncFpvUi();
+      setStatus(`Loaded FPV layer ${file.name}.`);
+    } catch {
+      setStatus('Could not load FPV layer PNG.', true);
+    } finally {
+      input.value = '';
+    }
+  });
+  q<HTMLInputElement>('fpvLayerVisible').addEventListener('change', (e) => updateFpvLayer((layer) => { layer.baseTransform.visible = (e.target as HTMLInputElement).checked; }));
+  q<HTMLInputElement>('fpvLayerX').addEventListener('input', (e) => updateFpvLayer((layer) => { layer.baseTransform.x = Number((e.target as HTMLInputElement).value); }));
+  q<HTMLInputElement>('fpvLayerY').addEventListener('input', (e) => updateFpvLayer((layer) => { layer.baseTransform.y = Number((e.target as HTMLInputElement).value); }));
+  q<HTMLInputElement>('fpvLayerScale').addEventListener('input', (e) => updateFpvLayer((layer) => { layer.baseTransform.scale = Number((e.target as HTMLInputElement).value); }));
+  q<HTMLInputElement>('fpvLayerRotation').addEventListener('input', (e) => updateFpvLayer((layer) => { layer.baseTransform.rotation = Number((e.target as HTMLInputElement).value); }));
+  q<HTMLInputElement>('fpvLayerOpacity').addEventListener('input', (e) => updateFpvLayer((layer) => { layer.baseTransform.opacity = Number((e.target as HTMLInputElement).value); }));
+  q<HTMLButtonElement>('fpvExportPng').addEventListener('click', () => {
+    generateFpvExport();
+    fpvExportCanvas?.toBlob((blob) => blob && downloadBlob(`${getFpvExportBaseName()}_unarmed_idle_fpv_arms.png`, blob), 'image/png');
+  });
+  q<HTMLButtonElement>('fpvExportJson').addEventListener('click', () => {
+    const metadata = fpvExportMetadata ?? generateFpvExport();
+    downloadBlob(`${getFpvExportBaseName()}_unarmed_idle_fpv_arms.json`, new Blob([JSON.stringify(metadata, null, 2)], { type: 'application/json' }));
+  });
+
   q<HTMLInputElement>('weaponFile').addEventListener('change', async (e) => {
     const file = (e.target as HTMLInputElement).files?.[0];
     if (!file) return;
@@ -1419,9 +1572,9 @@ const syncShellModeControls = () => {
     q<HTMLDivElement>('rigControls').hidden = shellMode !== 'rig';
     q<HTMLDivElement>('animateControls').hidden = shellMode !== 'animate';
     q<HTMLDivElement>('exportControls').hidden = shellMode !== 'export';
-    q<HTMLElement>('weaponQuickCard').hidden = !(shellMode === 'rig' || shellMode === 'animate');
+    q<HTMLElement>('weaponQuickCard').hidden = productMode === 'fpv-arms' || !(shellMode === 'rig' || shellMode === 'animate');
     q<HTMLDivElement>('transformPanel').hidden = shellMode !== 'rig' || toolMode !== 'transform-part';
-    updateStatusRow();
+    syncProductMode();
   };
   const setShellMode = (mode: ShellMode) => {
     if (shellMode === mode) return;
