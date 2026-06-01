@@ -1,9 +1,8 @@
-import { buildUnarmedIdleOffsets } from './fpvIdlePreset';
+import { buildFpvOffsets } from './fpvPresets';
 import type { FpvFrameOffsets, FpvRenderResult, FpvState } from './fpvTypes';
 
 function getOffsets(state: FpvState): FpvFrameOffsets[] {
-  if (state.animation === 'unarmed_idle') return buildUnarmedIdleOffsets(state.layers, state.frameCount);
-  return buildUnarmedIdleOffsets(state.layers, state.frameCount);
+  return buildFpvOffsets(state.layers, state.frameCount, state.animation);
 }
 
 export function renderFpvFrame(ctx: CanvasRenderingContext2D, state: FpvState, frameIndex: number, targetWidth = state.cellWidth, targetHeight = state.cellHeight): FpvFrameOffsets {
@@ -16,14 +15,13 @@ export function renderFpvFrame(ctx: CanvasRenderingContext2D, state: FpvState, f
   ctx.scale(scaleX, scaleY);
   for (const layer of state.layers) {
     if (!layer.image || !layer.baseTransform.visible) continue;
-    const offset = frameOffsets[layer.id] ?? { x: 0, y: 0, scale: 1, rotation: 0, opacity: 1 };
+    const offset = frameOffsets[layer.id] ?? { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0, opacity: 1 };
     const base = layer.baseTransform;
     ctx.save();
     ctx.globalAlpha = Math.max(0, Math.min(1, base.opacity * offset.opacity));
     ctx.translate(base.x + offset.x, base.y + offset.y);
     ctx.rotate(((base.rotation + offset.rotation) * Math.PI) / 180);
-    const combinedScale = base.scale * offset.scale;
-    ctx.scale(combinedScale, combinedScale);
+    ctx.scale(base.scaleX * offset.scaleX, base.scaleY * offset.scaleY);
     ctx.drawImage(layer.image, -layer.image.width / 2, -layer.image.height / 2);
     ctx.restore();
   }

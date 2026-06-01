@@ -38,6 +38,21 @@ export function inspectFpvCanvas(canvas: HTMLCanvasElement, metadataShape: Pick<
   const likelyBakedBackground = allPixelsOpaque || cornersOpaque || likelySolidWhiteBackground || likelySolidBlackBackground || likelyCheckerboardBackground;
   const dimensionsMatch = width === metadataShape.stripWidth && height === metadataShape.stripHeight;
   const metadataMatches = metadataShape.stripWidth === metadataShape.frameCount * metadataShape.cellWidth && metadataShape.stripHeight === metadataShape.cellHeight && dimensionsMatch;
+  let cellBleedRisk = false;
+  if (dimensionsMatch) {
+    for (let cell = 1; cell < metadataShape.frameCount; cell += 1) {
+      const boundaryX = cell * metadataShape.cellWidth;
+      for (let y = 0; y < height; y += 4) {
+        const leftAlpha = data[(y * width + boundaryX - 1) * 4 + 3];
+        const rightAlpha = data[(y * width + boundaryX) * 4 + 3];
+        if (leftAlpha > 0 || rightAlpha > 0) {
+          cellBleedRisk = true;
+          break;
+        }
+      }
+      if (cellBleedRisk) break;
+    }
+  }
   const warnings: string[] = [];
   if (!transparent) warnings.push('No transparent pixels found; exported strip may not contain real alpha.');
   if (allPixelsOpaque) warnings.push('All sampled pixels are opaque.');
@@ -46,6 +61,8 @@ export function inspectFpvCanvas(canvas: HTMLCanvasElement, metadataShape: Pick<
   if (likelySolidWhiteBackground) warnings.push('White background likely detected.');
   if (likelySolidBlackBackground) warnings.push('Black background likely detected.');
   if (!metadataMatches) warnings.push('Metadata dimensions do not match the rendered strip.');
+  if (width !== 6144 || height !== 1024 || metadataShape.frameCount !== 6 || metadataShape.cellWidth !== 1024 || metadataShape.cellHeight !== 1024) warnings.push('FPV output contract mismatch; expected 6 frames of 1024×1024 for a 6144×1024 strip.');
+  if (cellBleedRisk) warnings.push('Alpha detected on one or more cell boundaries; check for cell bleed/clipping.');
   return {
     alphaVerified: transparent > 0 && !allPixelsOpaque,
     hasTransparentPixels: transparent > 0,
@@ -57,7 +74,7 @@ export function inspectFpvCanvas(canvas: HTMLCanvasElement, metadataShape: Pick<
     likelySolidBlackBackground,
     dimensionsMatch,
     metadataMatches,
-    cellBleedRisk: false,
+    cellBleedRisk,
     warnings,
   };
 }
