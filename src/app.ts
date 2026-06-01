@@ -7,6 +7,7 @@ import { defaultState, defaultPartNames, globularPartNames, quadrupedPartNames, 
 import { createDefaultFpvState } from './fpv/fpvState';
 import { renderFpvFrame, renderFpvStrip } from './fpv/renderFpvStrip';
 import { exportFpvMetadata } from './fpv/exportFpvMetadata';
+import { FPV_ANIMATION_CATEGORY, fpvPresets, getFpvPreset } from './fpv/fpvPresets';
 import { inspectFpvCanvas } from './qa/fpvAlphaChecks';
 import type { FpvLayer, FpvMetadata, FpvState } from './fpv/fpvTypes';
 
@@ -203,7 +204,7 @@ export function initApp(root: HTMLDivElement) {
   <section class="panel statusRow"><span id="fileStat">none</span><span id="dimensionsStat">3072 × 3072</span><span id="partsStat">Parts: 0</span><span id="modeStat">Mode: Mask</span><span id="zoomStat">Zoom: 100%</span><span class="settingsStub">⚙</span></section>
   <section class="panel productModeSwitch"><button id="enemyModeButton" class="active" type="button">Enemy/Boss Sprite</button><button id="fpvModeButton" type="button">FPV Arms</button></section>
   <main id="enemyWorkspaceShell" class="workspaceShell panel"><div class="zoomRail"><button type="button">+</button><span>100%</span><button type="button">−</button></div><section class="workspaceArea"><canvas id="workspace" width="1024" height="1024"></canvas></section><aside id="partInfo" class="partInfo inspector"></aside></main>
-  <section id="fpvLab" class="panel fpvLab" hidden><div class="fpvPreviewColumn"><section class="previewPanel fpvPreviewPanel"><h3>FPV Arms Preview</h3><canvas id="fpvPreview" width="1024" height="1024"></canvas><div id="fpvFrameScrubber" class="fpvFrameScrubber"></div></section><section class="controls"><div class="row"><button id="fpvPresetUnarmedIdle" class="primary" type="button">Unarmed Idle</button><button id="fpvExportPng" type="button">Export PNG</button><button id="fpvExportJson" type="button">Export JSON</button></div><pre id="fpvExportReport">FPV Arms defaults: 6 frames, 1024×1024 cells, 6144×1024 strip.</pre></section></div><aside class="fpvControls"><section class="controls"><h3>Layers</h3><div id="fpvLayerList" class="fpvLayerList"></div><label class="fileLabel">Upload Selected Layer PNG<input id="fpvLayerFile" type="file" accept="image/png" /></label></section><section class="controls fpvTransformControls"><h3>Selected Layer Transform</h3><label class="inlineToggle">Visible<input id="fpvLayerVisible" type="checkbox" checked /></label><div class="controlGrid"><div class="compactSlider"><label for="fpvLayerX">X <span id="fpvLayerXValue">0</span></label><input id="fpvLayerX" type="range" min="-256" max="1280" step="1" value="0" /></div><div class="compactSlider"><label for="fpvLayerY">Y <span id="fpvLayerYValue">0</span></label><input id="fpvLayerY" type="range" min="-256" max="1280" step="1" value="0" /></div><div class="compactSlider"><label for="fpvLayerScale">Scale <span id="fpvLayerScaleValue">1.00</span></label><input id="fpvLayerScale" type="range" min="0.05" max="4" step="0.01" value="1" /></div><div class="compactSlider"><label for="fpvLayerRotation">Rotation <span id="fpvLayerRotationValue">0°</span></label><input id="fpvLayerRotation" type="range" min="-180" max="180" step="1" value="0" /></div><div class="compactSlider"><label for="fpvLayerOpacity">Opacity <span id="fpvLayerOpacityValue">100%</span></label><input id="fpvLayerOpacity" type="range" min="0" max="1" step="0.01" value="1" /></div></div></section></aside></section>
+  <section id="fpvLab" class="panel fpvLab" hidden><div class="fpvPreviewColumn"><section class="previewPanel fpvPreviewPanel"><div class="fpvPreviewHeader"><h3>FPV Preview</h3><label>Frame<select id="fpvFrameSelect"></select></label></div><canvas id="fpvPreview" width="1024" height="1024"></canvas><div id="fpvFrameScrubber" class="fpvFrameScrubber"></div></section><section class="controls fpvCompactPickers"><label>Animation Category<select id="fpvAnimationCategory"><option value="FPV">FPV</option></select></label><label>Animation Preset<select id="fpvAnimationPreset"></select></label></section><section class="controls fpvReportCard"><pre id="fpvExportReport">FPV defaults: 6 frames, 1024×1024 cells, 6144×1024 strip.</pre></section></div><aside class="fpvControls"><section class="controls"><h3>Layers</h3><div id="fpvLayerList" class="fpvLayerList"></div><div class="row"><button id="fpvLayerUp" type="button">Move Up</button><button id="fpvLayerDown" type="button">Move Down</button></div><label class="fileLabel">Upload / Replace Selected PNG<input id="fpvLayerFile" type="file" accept="image/png" /></label></section><section class="controls fpvTransformControls"><h3>Selected Layer</h3><label class="inlineToggle">Visible<input id="fpvLayerVisible" type="checkbox" checked /></label><div class="controlGrid"><div class="compactSlider"><label for="fpvLayerX">X <span id="fpvLayerXValue">0</span></label><input id="fpvLayerX" type="range" min="-256" max="1280" step="1" value="0" /></div><div class="compactSlider"><label for="fpvLayerY">Y <span id="fpvLayerYValue">0</span></label><input id="fpvLayerY" type="range" min="-256" max="1280" step="1" value="0" /></div><div class="compactSlider"><label for="fpvLayerScaleX">Scale X <span id="fpvLayerScaleXValue">1.00</span></label><input id="fpvLayerScaleX" type="range" min="0.05" max="4" step="0.01" value="1" /></div><div class="compactSlider"><label for="fpvLayerScaleY">Scale Y <span id="fpvLayerScaleYValue">1.00</span></label><input id="fpvLayerScaleY" type="range" min="0.05" max="4" step="0.01" value="1" /></div><div class="compactSlider"><label for="fpvLayerRotation">Rotation <span id="fpvLayerRotationValue">0°</span></label><input id="fpvLayerRotation" type="range" min="-180" max="180" step="1" value="0" /></div><div class="compactSlider"><label for="fpvLayerOpacity">Opacity <span id="fpvLayerOpacityValue">100%</span></label><input id="fpvLayerOpacity" type="range" min="0" max="1" step="0.01" value="1" /></div></div></section></aside></section>
   <section id="weaponQuickCard" class="panel weaponQuickCard" hidden><h3>WEAPON POSITION</h3><label class="fileLabel">Add Weapon PNG<input id="weaponFile" type="file" accept="image/png" /></label><div class="row"><label>Weapon<select id="weaponSelect"></select></label><label class="inlineToggle">Visible<input id="weaponVisible" type="checkbox" checked /></label></div><div id="weaponControls" hidden><div class="row"><label>Anchor Part<select id="weaponAnchorPart"></select></label><label>Layer<select id="weaponLayerMode"><option value="behind-anchor">Behind anchor part</option><option value="above-anchor" selected>Above anchor part</option><option value="above-all">Above all body parts</option></select></label></div><div class="controlGrid weaponGrid"><div class="compactSlider"><label for="weaponOffsetX">X Offset <span id="weaponOffsetXValue">0</span></label><input id="weaponOffsetX" type="range" min="-512" max="512" step="1" value="0" /></div><div class="compactSlider"><label for="weaponOffsetY">Y Offset <span id="weaponOffsetYValue">0</span></label><input id="weaponOffsetY" type="range" min="-512" max="512" step="1" value="0" /></div><div class="compactSlider"><label for="weaponRotation">Rotation <span id="weaponRotationValue">0°</span></label><input id="weaponRotation" type="range" min="-180" max="180" step="1" value="0" /></div><div class="compactSlider"><label for="weaponScale">Scale <span id="weaponScaleValue">1.00</span></label><input id="weaponScale" type="range" min="0.25" max="3" step="0.01" value="1" /></div></div><p id="weaponStatus" class="tipLine"></p><p id="weaponAnchorWarning" class="seamWarning" hidden>Weapon anchor part is missing.</p></div><div class="row weaponDeleteRow"><button id="deleteWeapon" type="button">Delete Weapon</button></div></section>
   <section id="enemyPartChipsWrap" class="panel partChipsWrap"><div class="partChips" id="partChips"></div></section>
   <section id="enemyModeTabs" class="panel modeTabs"><button id="modeMask" class="active" type="button">✎ Mask</button><button id="modeRig" type="button">⎔ Rig</button><button id="modeAnimate" type="button">〰 Animate</button><button id="modeExport" type="button">⇩ Export</button></section>
@@ -281,26 +282,39 @@ export function initApp(root: HTMLDivElement) {
   const setStatus = (m: string, e = false) => { status.textContent = m; status.classList.toggle('error', e); };
 
   const getSelectedFpvLayer = (): FpvLayer => fpvState.layers.find((layer) => layer.id === fpvState.selectedLayerId) ?? fpvState.layers[0]!;
-  const markFpvStale = () => { fpvExportCanvas = null; fpvExportMetadata = null; };
+  const markFpvStale = () => { fpvExportCanvas = null; fpvExportMetadata = null; updateExportButtonState(); };
   const getFpvExportBaseName = () => sanitizeBaseName(exportBaseNameOverride || sourceBaseName || 'fpv_arms');
+  const getFpvAnimationSuffix = () => getFpvPreset(fpvState.animation).id.replace(/_placeholder$/, '');
   const syncFpvReport = (message?: string) => {
     const lines = [
-      message ?? 'FPV Arms defaults: 6 frames, 1024×1024 cells, 6144×1024 strip.',
-      `Mode: ${fpvState.mode}`,
-      `Animation: ${fpvState.animation}`,
+      message ?? 'FPV defaults: 6 frames, 1024×1024 cells, 6144×1024 strip.',
+      `Category: ${fpvState.animationCategory}`,
+      `Preset: ${getFpvPreset(fpvState.animation).label}`,
       `Dimensions: ${fpvState.frameCount} × ${fpvState.cellWidth}×${fpvState.cellHeight} = ${fpvState.frameCount * fpvState.cellWidth}×${fpvState.cellHeight}`,
       `Loaded layers: ${fpvState.layers.filter((layer) => !!layer.image).length}/${fpvState.layers.length}`,
+      `Layer order: ${fpvState.layers.map((layer) => layer.id).join(' → ')}`,
     ];
     if (fpvExportMetadata) lines.push(JSON.stringify(fpvExportMetadata.qa, null, 2));
     q<HTMLPreElement>('fpvExportReport').textContent = lines.join('\n');
+    if (productMode === 'fpv-arms') renderReport.textContent = fpvExportMetadata ? JSON.stringify(fpvExportMetadata, null, 2) : lines.join('\n');
   };
   const renderFpvPreview = () => {
     const fpvPreview = q<HTMLCanvasElement>('fpvPreview');
     renderFpvFrame(fpvPreview.getContext('2d')!, fpvState, fpvState.selectedFrame, fpvPreview.width, fpvPreview.height);
   };
+  const scheduleFpvPreview = () => {
+    if (renderRaf) cancelAnimationFrame(renderRaf);
+    renderRaf = requestAnimationFrame(() => { renderFpvPreview(); renderRaf = null; });
+  };
+  const syncFpvPresetPicker = () => {
+    q<HTMLSelectElement>('fpvAnimationCategory').value = FPV_ANIMATION_CATEGORY;
+    const preset = q<HTMLSelectElement>('fpvAnimationPreset');
+    preset.innerHTML = fpvPresets.map((item) => `<option value="${item.id}">${item.label}</option>`).join('');
+    preset.value = fpvState.animation;
+  };
   const syncFpvLayerList = () => {
     const list = q<HTMLDivElement>('fpvLayerList');
-    list.innerHTML = fpvState.layers.map((layer) => `<button type="button" data-fpv-layer="${layer.id}" class="${layer.id === fpvState.selectedLayerId ? 'active' : ''}">${layer.label}<span>${layer.image ? layer.sourceFileName : 'stub'}</span></button>`).join('');
+    list.innerHTML = fpvState.layers.map((layer, index) => `<button type="button" data-fpv-layer="${layer.id}" class="${layer.id === fpvState.selectedLayerId ? 'active' : ''}"><strong>${index + 1}. ${layer.label}</strong><span>${layer.baseTransform.visible ? 'visible' : 'hidden'} · ${layer.image ? layer.sourceFileName : 'empty'}</span></button>`).join('');
     for (const button of Array.from(list.querySelectorAll<HTMLButtonElement>('button[data-fpv-layer]'))) {
       button.addEventListener('click', () => {
         fpvState.selectedLayerId = button.dataset.fpvLayer ?? fpvState.selectedLayerId;
@@ -309,6 +323,9 @@ export function initApp(root: HTMLDivElement) {
     }
   };
   const syncFpvScrubber = () => {
+    const frameSelect = q<HTMLSelectElement>('fpvFrameSelect');
+    frameSelect.innerHTML = Array.from({ length: fpvState.frameCount }, (_, index) => `<option value="${index}">Frame ${index + 1}</option>`).join('');
+    frameSelect.value = String(fpvState.selectedFrame);
     const scrubber = q<HTMLDivElement>('fpvFrameScrubber');
     scrubber.innerHTML = Array.from({ length: fpvState.frameCount }, (_, index) => `<button type="button" data-fpv-frame="${index}" class="${index === fpvState.selectedFrame ? 'active' : ''}">${index + 1}</button>`).join('');
     for (const button of Array.from(scrubber.querySelectorAll<HTMLButtonElement>('button[data-fpv-frame]'))) {
@@ -324,37 +341,62 @@ export function initApp(root: HTMLDivElement) {
     q<HTMLInputElement>('fpvLayerVisible').checked = t.visible;
     q<HTMLInputElement>('fpvLayerX').value = String(t.x);
     q<HTMLInputElement>('fpvLayerY').value = String(t.y);
-    q<HTMLInputElement>('fpvLayerScale').value = String(t.scale);
+    q<HTMLInputElement>('fpvLayerScaleX').value = String(t.scaleX);
+    q<HTMLInputElement>('fpvLayerScaleY').value = String(t.scaleY);
     q<HTMLInputElement>('fpvLayerRotation').value = String(t.rotation);
     q<HTMLInputElement>('fpvLayerOpacity').value = String(t.opacity);
     q<HTMLSpanElement>('fpvLayerXValue').textContent = `${Math.round(t.x)}`;
     q<HTMLSpanElement>('fpvLayerYValue').textContent = `${Math.round(t.y)}`;
-    q<HTMLSpanElement>('fpvLayerScaleValue').textContent = t.scale.toFixed(2);
+    q<HTMLSpanElement>('fpvLayerScaleXValue').textContent = t.scaleX.toFixed(2);
+    q<HTMLSpanElement>('fpvLayerScaleYValue').textContent = t.scaleY.toFixed(2);
     q<HTMLSpanElement>('fpvLayerRotationValue').textContent = `${Math.round(t.rotation)}°`;
     q<HTMLSpanElement>('fpvLayerOpacityValue').textContent = `${Math.round(t.opacity * 100)}%`;
+    const selectedIndex = fpvState.layers.findIndex((layerItem) => layerItem.id === layer.id);
+    q<HTMLButtonElement>('fpvLayerUp').disabled = selectedIndex <= 0;
+    q<HTMLButtonElement>('fpvLayerDown').disabled = selectedIndex < 0 || selectedIndex >= fpvState.layers.length - 1;
   };
   function syncFpvUi() {
+    syncFpvPresetPicker();
     syncFpvLayerList();
     syncFpvScrubber();
     syncFpvTransformControls();
     renderFpvPreview();
     syncFpvReport();
+    syncFilenamePreview();
+    updateExportButtonState();
   }
   const updateFpvLayer = (fn: (layer: FpvLayer) => void) => {
     fn(getSelectedFpvLayer());
     markFpvStale();
     syncFpvTransformControls();
-    renderFpvPreview();
+    syncFpvLayerList();
+    scheduleFpvPreview();
+    syncFpvReport();
+  };
+  const moveFpvLayer = (delta: -1 | 1) => {
+    const index = fpvState.layers.findIndex((layer) => layer.id === fpvState.selectedLayerId);
+    const nextIndex = index + delta;
+    if (index < 0 || nextIndex < 0 || nextIndex >= fpvState.layers.length) return;
+    const nextLayers = [...fpvState.layers];
+    const [layer] = nextLayers.splice(index, 1);
+    nextLayers.splice(nextIndex, 0, layer!);
+    fpvState = { ...fpvState, layers: nextLayers };
+    markFpvStale();
+    syncFpvUi();
   };
   const generateFpvExport = (): FpvMetadata => {
+    fpvState = { ...fpvState, frameCount: 6, cellWidth: 1024, cellHeight: 1024 };
     const result = renderFpvStrip(fpvState);
-    const shape = { frameCount: fpvState.frameCount, cellWidth: fpvState.cellWidth, cellHeight: fpvState.cellHeight, stripWidth: result.canvas.width, stripHeight: result.canvas.height };
-    const qa = inspectFpvCanvas(result.canvas, shape);
+    const metadataShape = { frameCount: fpvState.frameCount, cellWidth: fpvState.cellWidth, cellHeight: fpvState.cellHeight, stripWidth: fpvState.cellWidth * fpvState.frameCount, stripHeight: fpvState.cellHeight };
+    const qa = inspectFpvCanvas(result.canvas, metadataShape);
     const metadata = exportFpvMetadata(fpvState, result.frameOffsets, qa);
     fpvExportCanvas = result.canvas;
     fpvExportMetadata = metadata;
+    renderReport.textContent = JSON.stringify(metadata, null, 2);
+    renderReport.dataset.stale = 'false';
     syncFpvReport(qa.warnings.length ? `FPV export generated with ${qa.warnings.length} warning(s).` : 'FPV export generated. Alpha verified.');
     setStatus(`Generated FPV strip ${result.canvas.width}x${result.canvas.height}${qa.warnings.length ? ' with QA warnings' : ''}.`, qa.warnings.length > 0);
+    updateExportButtonState();
     return metadata;
   };
   const syncProductMode = () => {
@@ -364,9 +406,15 @@ export function initApp(root: HTMLDivElement) {
     q<HTMLElement>('enemyWorkspaceShell').hidden = isFpv;
     q<HTMLElement>('weaponQuickCard').hidden = isFpv || !(shellMode === 'rig' || shellMode === 'animate');
     q<HTMLElement>('enemyPartChipsWrap').hidden = isFpv;
-    q<HTMLElement>('enemyModeTabs').hidden = isFpv;
-    q<HTMLElement>('enemyModeControls').hidden = isFpv;
+    q<HTMLElement>('enemyModeTabs').hidden = false;
+    q<HTMLElement>('enemyModeControls').hidden = false;
     q<HTMLElement>('fpvLab').hidden = !isFpv;
+    q<HTMLSelectElement>('frameCount').disabled = isFpv;
+    q<HTMLInputElement>('cellWidth').disabled = isFpv;
+    q<HTMLInputElement>('cellHeight').disabled = isFpv;
+    q<HTMLSelectElement>('frameCount').value = isFpv ? '6' : String(state.frameCount);
+    q<HTMLInputElement>('cellWidth').value = String(isFpv ? fpvState.cellWidth : state.cellWidth);
+    q<HTMLInputElement>('cellHeight').value = String(isFpv ? fpvState.cellHeight : state.cellHeight);
     if (isFpv) syncFpvUi();
     updateStatusRow();
   };
@@ -428,8 +476,8 @@ export function initApp(root: HTMLDivElement) {
     return { sourceFileName: `${fallbackBase}.png`, sourceBaseName: fallbackBase };
   };
   const getExportNames = () => {
-    const animationSuffix = getAnimationSuffix(animationMode, attackSettings.attackStyle);
-    const exportBaseName = getExportBaseName();
+    const animationSuffix = productMode === 'fpv-arms' ? getFpvAnimationSuffix() : getAnimationSuffix(animationMode, attackSettings.attackStyle);
+    const exportBaseName = productMode === 'fpv-arms' ? getFpvExportBaseName() : getExportBaseName();
     return {
       animationSuffix,
       exportBaseName,
@@ -445,6 +493,7 @@ export function initApp(root: HTMLDivElement) {
       `Source File: ${sourceFileName ?? 'none'}`,
       `Source Base: ${sourceBaseName || defaultProjectBaseName}`,
       `Active Export Base: ${names.exportBaseName}`,
+      `Animation category: ${productMode === 'fpv-arms' ? FPV_ANIMATION_CATEGORY : 'Enemy/Boss'}`,
       `Animation suffix: ${names.animationSuffix}`,
       `PNG: ${names.pngFileName}`,
       `JSON: ${names.jsonFileName}`,
@@ -452,7 +501,7 @@ export function initApp(root: HTMLDivElement) {
     ].join('\n');
   };
   const updateExportButtonState = () => {
-    const hasStrip = !!stripCanvas && !!exportMeta && !stalePreview;
+    const hasStrip = productMode === 'fpv-arms' ? !!fpvExportCanvas && !!fpvExportMetadata : !!stripCanvas && !!exportMeta && !stalePreview;
     pngButton.disabled = !hasStrip;
     gifButton.disabled = !hasStrip;
     copyGifButton.disabled = !hasStrip;
@@ -460,6 +509,33 @@ export function initApp(root: HTMLDivElement) {
   };
 
   const buildGifPreviewBlob = async (): Promise<{ blob: Blob; width: number; height: number; fps: number; frameDelayMs: number }> => {
+    if (productMode === 'fpv-arms') {
+      if (!fpvExportCanvas || !fpvExportMetadata) throw new Error('Generate a FPV strip before exporting GIF.');
+      const gifSize = q<HTMLSelectElement>('gifSize').value;
+      const fps = clamp(Number(q<HTMLInputElement>('gifFps').value) || 12, 4, 24);
+      const srcWidth = fpvState.cellWidth;
+      const srcHeight = fpvState.cellHeight;
+      const targetWidth = gifSize === 'small' ? 320 : gifSize === 'large' ? 640 : gifSize === 'current' ? srcWidth : 512;
+      const scale = targetWidth / srcWidth;
+      const targetHeight = Math.max(1, Math.round(srcHeight * scale));
+      const frameCanvas = document.createElement('canvas');
+      frameCanvas.width = targetWidth;
+      frameCanvas.height = targetHeight;
+      const frameCtx = frameCanvas.getContext('2d', { willReadFrequently: true })!;
+      const gif = GIFEncoder();
+      const frameDelayMs = 1000 / fps;
+      const frameDelay = Math.max(1, Math.round(frameDelayMs / 10));
+      for (let i = 0; i < fpvState.frameCount; i++) {
+        frameCtx.clearRect(0, 0, targetWidth, targetHeight);
+        frameCtx.drawImage(fpvExportCanvas, i * srcWidth, 0, srcWidth, srcHeight, 0, 0, targetWidth, targetHeight);
+        const rgba = frameCtx.getImageData(0, 0, targetWidth, targetHeight).data;
+        const palette = quantize(rgba, 256, { format: 'rgba4444' });
+        const index = applyPalette(rgba, palette, 'rgba4444');
+        gif.writeFrame(index, targetWidth, targetHeight, { palette, delay: frameDelay, repeat: 0, transparent: true });
+      }
+      gif.finish();
+      return { blob: new Blob([gif.bytesView()], { type: 'image/gif' }), width: targetWidth, height: targetHeight, fps, frameDelayMs };
+    }
     if (!stripCanvas || stalePreview || !exportMeta) throw new Error('Generate a strip before exporting GIF.');
     const gifSize = q<HTMLSelectElement>('gifSize').value;
     const fps = clamp(Number(q<HTMLInputElement>('gifFps').value) || 12, 4, 24);
@@ -1476,12 +1552,18 @@ const seamJointPairs = new Set(['torso:front_arm','torso:rear_arm','torso:front_
     syncProductMode();
     setStatus('FPV Arms mode selected.');
   });
-  q<HTMLButtonElement>('fpvPresetUnarmedIdle').addEventListener('click', () => {
-    fpvState = { ...fpvState, animation: 'unarmed_idle' };
+  q<HTMLSelectElement>('fpvAnimationPreset').addEventListener('change', (e) => {
+    fpvState = { ...fpvState, animation: (e.target as HTMLSelectElement).value as FpvState['animation'] };
     markFpvStale();
     syncFpvUi();
-    setStatus('Applied Unarmed Idle offsets without changing base layer placement.');
+    setStatus(`${getFpvPreset(fpvState.animation).label} selected; base layer transforms preserved.`);
   });
+  q<HTMLSelectElement>('fpvFrameSelect').addEventListener('change', (e) => {
+    fpvState.selectedFrame = Number((e.target as HTMLSelectElement).value);
+    syncFpvUi();
+  });
+  q<HTMLButtonElement>('fpvLayerUp').addEventListener('click', () => moveFpvLayer(-1));
+  q<HTMLButtonElement>('fpvLayerDown').addEventListener('click', () => moveFpvLayer(1));
   q<HTMLInputElement>('fpvLayerFile').addEventListener('change', async (e) => {
     const input = e.target as HTMLInputElement;
     const file = input.files?.[0];
@@ -1504,18 +1586,10 @@ const seamJointPairs = new Set(['torso:front_arm','torso:rear_arm','torso:front_
   q<HTMLInputElement>('fpvLayerVisible').addEventListener('change', (e) => updateFpvLayer((layer) => { layer.baseTransform.visible = (e.target as HTMLInputElement).checked; }));
   q<HTMLInputElement>('fpvLayerX').addEventListener('input', (e) => updateFpvLayer((layer) => { layer.baseTransform.x = Number((e.target as HTMLInputElement).value); }));
   q<HTMLInputElement>('fpvLayerY').addEventListener('input', (e) => updateFpvLayer((layer) => { layer.baseTransform.y = Number((e.target as HTMLInputElement).value); }));
-  q<HTMLInputElement>('fpvLayerScale').addEventListener('input', (e) => updateFpvLayer((layer) => { layer.baseTransform.scale = Number((e.target as HTMLInputElement).value); }));
+  q<HTMLInputElement>('fpvLayerScaleX').addEventListener('input', (e) => updateFpvLayer((layer) => { layer.baseTransform.scaleX = Number((e.target as HTMLInputElement).value); }));
+  q<HTMLInputElement>('fpvLayerScaleY').addEventListener('input', (e) => updateFpvLayer((layer) => { layer.baseTransform.scaleY = Number((e.target as HTMLInputElement).value); }));
   q<HTMLInputElement>('fpvLayerRotation').addEventListener('input', (e) => updateFpvLayer((layer) => { layer.baseTransform.rotation = Number((e.target as HTMLInputElement).value); }));
   q<HTMLInputElement>('fpvLayerOpacity').addEventListener('input', (e) => updateFpvLayer((layer) => { layer.baseTransform.opacity = Number((e.target as HTMLInputElement).value); }));
-  q<HTMLButtonElement>('fpvExportPng').addEventListener('click', () => {
-    generateFpvExport();
-    fpvExportCanvas?.toBlob((blob) => blob && downloadBlob(`${getFpvExportBaseName()}_unarmed_idle_fpv_arms.png`, blob), 'image/png');
-  });
-  q<HTMLButtonElement>('fpvExportJson').addEventListener('click', () => {
-    const metadata = fpvExportMetadata ?? generateFpvExport();
-    downloadBlob(`${getFpvExportBaseName()}_unarmed_idle_fpv_arms.json`, new Blob([JSON.stringify(metadata, null, 2)], { type: 'application/json' }));
-  });
-
   q<HTMLInputElement>('weaponFile').addEventListener('change', async (e) => {
     const file = (e.target as HTMLInputElement).files?.[0];
     if (!file) return;
@@ -1550,6 +1624,7 @@ const seamJointPairs = new Set(['torso:front_arm','torso:rear_arm','torso:front_
   q<HTMLInputElement>('file').addEventListener('change', async (e) => { const file = (e.target as HTMLInputElement).files?.[0]; if (!file) return; image = await loadPngFromFile(file); sourceImageDataUrl = await new Promise((resolve, reject) => { const fr = new FileReader(); fr.onload = () => resolve(String(fr.result)); fr.onerror = () => reject(fr.error); fr.readAsDataURL(file); }); sourceFileName = file.name; sourceBaseName = sanitizeBaseName(file.name); exportBaseNameOverride = ''; const c = document.createElement('canvas'); c.width = image.width; c.height = image.height; c.getContext('2d')!.drawImage(image,0,0); state.analysis = analyzeAlpha(c.getContext('2d')!.getImageData(0,0,c.width,c.height)); sourceQuality.textContent = `Source: ${state.analysis.width}x${state.analysis.height}\nFloorY: ${state.analysis.floorY}`; ensureMaskCanvases(); renderParts(); scheduleWorkspaceRender(); markStale(); syncFilenamePreview(); setStatus(`Loaded ${file.name}`); q<HTMLSpanElement>('fileStat').textContent = `File: ${file.name}`; q<HTMLSpanElement>('dimensionsStat').textContent = `Dimensions: ${image.width}×${image.height}`; q<HTMLSpanElement>('savedStat').textContent = 'Loaded'; refreshSaveProjectEnabled(); });
 
   generateButton.addEventListener('click', () => {
+    if (productMode === 'fpv-arms') { generateFpvExport(); return; }
     if (!confirmUnderpaintExportSafety()) return;
     if (jawAnimationEnabled && !rawExtractedPartLayers.has('lower_jaw')) {
       setStatus('Jaw Animation requires a built lower_jaw layer. Build Part Layers first.', true);
@@ -1568,9 +1643,10 @@ const seamJointPairs = new Set(['torso:front_arm','torso:rear_arm','torso:front_
   }
 const syncShellModeControls = () => {
     ['modeMask', 'modeRig', 'modeAnimate', 'modeExport'].forEach((id, index) => q<HTMLButtonElement>(id).classList.toggle('active', ['mask', 'rig', 'animate', 'export'][index] === shellMode));
-    q<HTMLDivElement>('maskControls').hidden = shellMode !== 'mask';
-    q<HTMLDivElement>('rigControls').hidden = shellMode !== 'rig';
-    q<HTMLDivElement>('animateControls').hidden = shellMode !== 'animate';
+    const isFpv = productMode === 'fpv-arms';
+    q<HTMLDivElement>('maskControls').hidden = isFpv || shellMode !== 'mask';
+    q<HTMLDivElement>('rigControls').hidden = isFpv || shellMode !== 'rig';
+    q<HTMLDivElement>('animateControls').hidden = isFpv || shellMode !== 'animate';
     q<HTMLDivElement>('exportControls').hidden = shellMode !== 'export';
     q<HTMLElement>('weaponQuickCard').hidden = productMode === 'fpv-arms' || !(shellMode === 'rig' || shellMode === 'animate');
     q<HTMLDivElement>('transformPanel').hidden = shellMode !== 'rig' || toolMode !== 'transform-part';
@@ -1715,8 +1791,8 @@ const syncIdleReadout = () => {
   q<HTMLButtonElement>('modeRig').addEventListener('pointerup', () => setShellMode('rig'));
   q<HTMLButtonElement>('modeAnimate').addEventListener('pointerup', () => setShellMode('animate'));
   q<HTMLButtonElement>('modeExport').addEventListener('pointerup', () => setShellMode('export'));
-  q<HTMLButtonElement>('generateButtonExport').addEventListener('click', generateStripAndPreview);
-  q<HTMLButtonElement>('generateButtonExport').addEventListener('click', (evt) => { if (!confirmUnderpaintExportSafety()) evt.stopImmediatePropagation(); }, { capture: true });
+  q<HTMLButtonElement>('generateButtonExport').addEventListener('click', () => { if (productMode === 'fpv-arms') generateFpvExport(); else generateStripAndPreview(); });
+  q<HTMLButtonElement>('generateButtonExport').addEventListener('click', (evt) => { if (productMode !== 'fpv-arms' && !confirmUnderpaintExportSafety()) evt.stopImmediatePropagation(); }, { capture: true });
   q<HTMLButtonElement>('wholeIdleMode').addEventListener('click', () => { animationMode = 'whole-sprite-idle'; syncRecommendedPreset(false); markStale(); syncIdleReadout(); });
   q<HTMLButtonElement>('partIdleMode').addEventListener('click', () => { animationMode = 'part-based-idle'; syncRecommendedPreset(false); markStale(); syncIdleReadout(); });
   q<HTMLButtonElement>('partWalkMode').addEventListener('click', () => { animationMode = 'part-based-small-walk'; syncRecommendedPreset(false); markStale(); syncIdleReadout(); });
@@ -1750,6 +1826,11 @@ const syncIdleReadout = () => {
   q<HTMLButtonElement>('resetExportBaseName').addEventListener('click', () => { exportBaseNameOverride = ''; syncFilenamePreview(); });
 
   pngButton.addEventListener('click', () => {
+    if (productMode === 'fpv-arms') {
+      if (!fpvExportCanvas || !fpvExportMetadata) generateFpvExport();
+      const { pngFileName } = getExportNames(); fpvExportCanvas?.toBlob((blob) => blob && downloadBlob(pngFileName, blob), 'image/png');
+      return;
+    }
     if (!confirmUnderpaintExportSafety()) return;
     if (!stripCanvas || stalePreview) {
       setStatus('Generate a strip before exporting.', true);
@@ -1759,13 +1840,17 @@ const syncIdleReadout = () => {
   });
 
   gifButton.addEventListener('click', async () => {
-    if (!confirmUnderpaintExportSafety()) return;
+    if (productMode !== 'fpv-arms' && !confirmUnderpaintExportSafety()) return;
     try {
       const { blob, width, height, fps, frameDelayMs } = await buildGifPreviewBlob();
       const { gifFileName } = getExportNames();
       downloadBlob(gifFileName, blob);
-      exportMeta = exportMeta ? { ...exportMeta, gifWidth: width, gifHeight: height, gifFrameCount: state.frameCount, gifFps: fps, gifFrameDelayMs: Number(frameDelayMs.toFixed(3)), gifLoop: true } : exportMeta;
-      renderReport.textContent = exportMeta ? JSON.stringify(exportMeta, null, 2) : renderReport.textContent;
+      if (productMode === 'fpv-arms') {
+        renderReport.textContent = fpvExportMetadata ? JSON.stringify(fpvExportMetadata, null, 2) : renderReport.textContent;
+      } else {
+        exportMeta = exportMeta ? { ...exportMeta, gifWidth: width, gifHeight: height, gifFrameCount: state.frameCount, gifFps: fps, gifFrameDelayMs: Number(frameDelayMs.toFixed(3)), gifLoop: true } : exportMeta;
+        renderReport.textContent = exportMeta ? JSON.stringify(exportMeta, null, 2) : renderReport.textContent;
+      }
       setStatus('GIF exported.');
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Generate a strip before exporting GIF.', true);
@@ -1793,14 +1878,24 @@ const syncIdleReadout = () => {
           setStatus('Sharing/copy unsupported; GIF downloaded.', true);
         }
       }
-      exportMeta = exportMeta ? { ...exportMeta, gifWidth: width, gifHeight: height, gifFrameCount: state.frameCount, gifFps: fps, gifFrameDelayMs: Number(frameDelayMs.toFixed(3)), gifLoop: true } : exportMeta;
-      renderReport.textContent = exportMeta ? JSON.stringify(exportMeta, null, 2) : renderReport.textContent;
+      if (productMode === 'fpv-arms') {
+        renderReport.textContent = fpvExportMetadata ? JSON.stringify(fpvExportMetadata, null, 2) : renderReport.textContent;
+      } else {
+        exportMeta = exportMeta ? { ...exportMeta, gifWidth: width, gifHeight: height, gifFrameCount: state.frameCount, gifFps: fps, gifFrameDelayMs: Number(frameDelayMs.toFixed(3)), gifLoop: true } : exportMeta;
+        renderReport.textContent = exportMeta ? JSON.stringify(exportMeta, null, 2) : renderReport.textContent;
+      }
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Generate a strip before exporting GIF.', true);
     }
   });
 
   jsonButton.addEventListener('click', () => {
+    if (productMode === 'fpv-arms') {
+      const metadata = fpvExportMetadata ?? generateFpvExport();
+      const { jsonFileName } = getExportNames();
+      downloadBlob(jsonFileName, new Blob([JSON.stringify(metadata, null, 2)], { type: 'application/json' }));
+      return;
+    }
     if (!confirmUnderpaintExportSafety()) return;
     if (!exportMeta || stalePreview) {
       setStatus('Generate a strip before exporting.', true);

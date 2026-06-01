@@ -1,9 +1,10 @@
-export type FpvLayerKind = 'left-arm' | 'right-arm' | 'weapon' | 'armor';
+export type FpvLayerKind = 'leftArm' | 'rightArm' | 'leftHand' | 'rightHand' | 'weapon' | 'gloveOrArmor' | 'sleeve' | 'extra';
 
 export type FpvTransform = {
   x: number;
   y: number;
-  scale: number;
+  scaleX: number;
+  scaleY: number;
   rotation: number;
   opacity: number;
   visible: boolean;
@@ -12,7 +13,8 @@ export type FpvTransform = {
 export type FpvAnimationOffset = {
   x: number;
   y: number;
-  scale: number;
+  scaleX: number;
+  scaleY: number;
   rotation: number;
   opacity: number;
 };
@@ -26,12 +28,13 @@ export type FpvLayer = {
   baseTransform: FpvTransform;
 };
 
-export type FpvAnimationId = 'unarmed_idle';
+export type FpvAnimationId = 'unarmed_idle' | 'unarmed_ready' | 'light_attack_placeholder' | 'heavy_attack_placeholder' | 'weapon_idle_placeholder';
 
 export type FpvFrameOffsets = Record<string, FpvAnimationOffset>;
 
 export type FpvState = {
   mode: 'fpv-arms';
+  animationCategory: 'FPV';
   animation: FpvAnimationId;
   frameCount: number;
   cellWidth: number;
@@ -63,7 +66,9 @@ export type FpvQaReport = {
 
 export type FpvMetadata = {
   mode: 'fpv-arms';
+  animationCategory: 'FPV';
   animation: FpvAnimationId;
+  animationLabel: string;
   frameCount: number;
   cellWidth: number;
   cellHeight: number;
@@ -76,6 +81,7 @@ export type FpvMetadata = {
     kind: FpvLayerKind;
     label: string;
     sourceFileName: string | null;
+    layerOrder: number;
     baseTransform: FpvTransform;
   }>;
   perFrameAnimationOffsets: FpvFrameOffsets[];

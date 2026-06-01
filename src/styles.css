@@ -214,3 +214,34 @@ pre {
     max-height: 52vh;
   }
 }
+.fpvPreviewHeader,
+.fpvCompactPickers {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  align-items: end;
+}
+
+.fpvPreviewHeader h3 { margin: 0; align-self: center; }
+.fpvPreviewHeader label,
+.fpvCompactPickers label { min-width: 0; }
+.fpvReportCard pre { max-height: 160px; overflow-y: auto; margin: 0; }
+.fpvControls { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.fpvLayerList { max-height: 240px; overflow-y: auto; }
+.fpvLayerList strong { font-size: 13px; }
+.fpvControls,
+.fpvControls *,
+.fpvCompactPickers,
+.fpvCompactPickers *,
+.fpvFrameScrubber,
+.fpvFrameScrubber * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+@media (max-width: 980px) {
+  .fpvPreviewHeader,
+  .fpvCompactPickers { grid-template-columns: 1fr; }
+  .fpvLayerList { max-height: 180px; }
+}
