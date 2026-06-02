@@ -24,11 +24,39 @@ export type FpvLayer = {
   kind: FpvLayerKind;
   label: string;
   sourceFileName: string | null;
+  imageDataUrl: string | null;
   image: HTMLImageElement | null;
   baseTransform: FpvTransform;
 };
 
-export type FpvAnimationId = 'unarmed_idle' | 'unarmed_ready' | 'light_attack_placeholder' | 'heavy_attack_placeholder' | 'weapon_idle_placeholder';
+export type FpvAnimationId = 'unarmed_idle' | 'unarmed_ready' | 'punch_claw' | 'weapon_idle_placeholder' | 'light_attack_placeholder' | 'heavy_attack_placeholder';
+
+export type FpvIdleSettings = {
+  bobAmount: number;
+  bobSpeed: number;
+  handDriftX: number;
+  handDriftY: number;
+  rotationSway: number;
+  asymmetry: number;
+  phaseOffset: number;
+};
+
+export type FpvPunchClawSettings = {
+  reach: number;
+  recoil: number;
+  verticalSwing: number;
+  arc: number;
+  rotation: number;
+  anticipation: number;
+  speed: number;
+  leftRightOffset: number;
+  impactSnap: number;
+};
+
+export type FpvAnimationSettings = {
+  idle: FpvIdleSettings;
+  punchClaw: FpvPunchClawSettings;
+};
 
 export type FpvFrameOffsets = Record<string, FpvAnimationOffset>;
 
@@ -41,6 +69,9 @@ export type FpvState = {
   cellHeight: number;
   selectedFrame: number;
   selectedLayerId: string;
+  previewPlaying: boolean;
+  previewFps: number;
+  animationSettings: FpvAnimationSettings;
   layers: FpvLayer[];
 };
 
@@ -76,12 +107,16 @@ export type FpvMetadata = {
   stripHeight: number;
   alphaVerified: boolean;
   bleedRisk: boolean;
+  animationSettings: FpvAnimationSettings;
+  previewSettings: { selectedFrame: number; previewPlaying: boolean; previewFps: number };
   layers: Array<{
     id: string;
     kind: FpvLayerKind;
     label: string;
     sourceFileName: string | null;
     layerOrder: number;
+    visible: boolean;
+    opacity: number;
     baseTransform: FpvTransform;
   }>;
   perFrameAnimationOffsets: FpvFrameOffsets[];

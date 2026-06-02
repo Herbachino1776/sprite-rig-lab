@@ -1,5 +1,11 @@
 import type { SpriteAnalysis } from '../image/alphaAnalysis';
 
+import type { FpvState } from '../fpv/fpvTypes';
+
+export type SerializedFpvState = Omit<FpvState, 'layers'> & {
+  layers: Array<Omit<FpvState['layers'][number], 'image'>>;
+};
+
 export type MaskPart = {
   id?: string;
   name: string;
@@ -44,11 +50,11 @@ export type ProjectSaveData = {
   sourceBaseName?: string;
   exportBaseNameOverride?: string;
   exportBaseName?: string;
-  sourceImageDataUrl: string;
-  sourceImageWidth: number;
-  sourceImageHeight: number;
-  sourceBounds: SpriteAnalysis['sourceBounds'];
-  floorY: number;
+  sourceImageDataUrl?: string;
+  sourceImageWidth?: number;
+  sourceImageHeight?: number;
+  sourceBounds?: SpriteAnalysis['sourceBounds'];
+  floorY?: number;
   parts: Array<{ id?: string; name: string; visible: boolean; color: string; maskDataUrl: string | null; layerType?: 'part' | 'underpaint_patch'; parentPartName?: string }>;
   pivots: Record<string, { x: number; y: number } | undefined>;
   floorContacts: Record<string, { x: number; y: number } | undefined>;
@@ -123,6 +129,8 @@ export type ProjectSaveData = {
   lipLine?: { y: number };
   weapons?: WeaponAttachment[];
   selectedWeaponId?: string | null;
+  productMode?: 'enemy' | 'fpv-arms';
+  fpvState?: SerializedFpvState;
 };
 
 export const defaultState: ProjectState = { frameCount: 6, cellWidth: 3072, cellHeight: 3072, analysis: null };
