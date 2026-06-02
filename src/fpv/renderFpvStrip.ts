@@ -2,7 +2,7 @@ import { buildFpvOffsets } from './fpvPresets';
 import type { FpvFrameOffsets, FpvRenderResult, FpvState } from './fpvTypes';
 
 function getOffsets(state: FpvState): FpvFrameOffsets[] {
-  return buildFpvOffsets(state.layers, state.frameCount, state.animation);
+  return buildFpvOffsets(state.layers, state.frameCount, state.animation, state.animationSettings);
 }
 
 export function renderFpvFrame(ctx: CanvasRenderingContext2D, state: FpvState, frameIndex: number, targetWidth = state.cellWidth, targetHeight = state.cellHeight): FpvFrameOffsets {

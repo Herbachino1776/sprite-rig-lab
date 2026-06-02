@@ -245,3 +245,10 @@ pre {
   .fpvCompactPickers { grid-template-columns: 1fr; }
   .fpvLayerList { max-height: 180px; }
 }
+
+.fpvAnimationEditor h3 { margin: 0; color: #c897ff; letter-spacing: .04em; }
+.fpvAnimationEditor .seamSubline { margin-bottom: 2px; }
+.fpvSliderGroup { align-items: end; }
+.fpvSliderGroup .compactSlider input[type="range"] { width: 100%; min-height: 38px; }
+.fpvPreviewHeader { grid-template-columns: 1fr minmax(110px, .8fr) minmax(90px, .55fr) minmax(120px, .8fr); }
+@media (max-width: 980px) { .fpvPreviewHeader { grid-template-columns: 1fr; } }
